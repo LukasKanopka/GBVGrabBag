@@ -1,0 +1,60 @@
+@import "tailwindcss";
+
+/* Theme tokens (Tailwind v4) - updated to requested palette */
+@theme {
+  --color-gbv-blue: #2d51a6;   /* Blue */
+  --color-gbv-orange: #faa237; /* Orange */
+  --color-gbv-green: #6cc451;  /* Green */
+  --color-gbv-dark-green: #1b6a08; /* Dark Green */
+  --color-gbv-sand: #ede0d1;   /* Sand */
+  --color-gbv-bg: #ede0d1;     /* Background */
+  --color-gbv-ink: #0f172a;    /* High-contrast ink */
+}
+
+/* Gradient helpers for modern material styling */
+.gbv-gradient-green {
+  background-image: linear-gradient(135deg, #58a73f 0%, #6cc451 70%);
+}
+
+.gbv-gradient-primary {
+  background-image: linear-gradient(135deg, #2d51a6 0%, #faa237 100%);
+}
+/* Base layout helpers */
+html, body, #app { height: 100%; }
+
+/* Readability defaults for bright outdoor environments */
+:root { color-scheme: light; }
+
+body {
+  font-feature-settings: "kern";
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Mild same-color gradients */
+.gbv-grad-green {
+  background-image: linear-gradient(135deg, #5fb948 0%, #64b54b 100%);
+}
+
+.gbv-grad-dark-green {
+  background-image: linear-gradient(135deg, #1b6a08 0%, #29820c 100%);
+}
+
+.gbv-grad-blue {
+  background-image: linear-gradient(135deg, #244695 0%, #2d51a6 100%);
+}
+
+.gbv-grad-orange {
+  background-image: linear-gradient(135deg, #f5931a 0%, #faa237 100%);
+}
+
+/* Backward compat: keep name but switch to same-color gradient */
+.gbv-gradient-green {
+  background-image: linear-gradient(135deg, #5fb948 0%, #6cc451 100%);
+}
+
+/* Primary previously mixed colors; now use blue-only mild gradient */
+.gbv-gradient-primary {
+  background-image: linear-gradient(135deg, #244695 0%, #2d51a6 100%);
+}
+
