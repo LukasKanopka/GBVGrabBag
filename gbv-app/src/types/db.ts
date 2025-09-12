@@ -50,6 +50,8 @@ export interface Tournament {
   advancement_rules: AdvancementRules | null;
   game_rules: GameRules | null;
   status: TournamentStatus;
+  bracket_started: boolean; // schema default false
+  bracket_generated_at: string | null; // timestamptz
   created_at: string; // timestamptz
 }
 

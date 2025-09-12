@@ -31,27 +31,47 @@ async function signOut() {
 
         <div class="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div class="rounded-md border border-slate-200 p-4">
+            <h3 class="font-semibold text-slate-800">Tournament Setup</h3>
+            <p class="mt-1 text-sm text-slate-600">Create/edit tournaments, rules, and status.</p>
+            <router-link
+              :to="{ name: 'admin-tournament-setup' }"
+              class="mt-3 inline-flex items-center justify-center rounded-xl px-4 py-2 text-white font-medium shadow-md gbv-grad-blue"
+            >
+              Manage Tournaments
+            </router-link>
+          </div>
+
+          <div class="rounded-md border border-slate-200 p-4">
             <h3 class="font-semibold text-slate-800">Players Import</h3>
             <p class="mt-1 text-sm text-slate-600">Upload CSV or add/remove players manually.</p>
-            <div class="mt-3 rounded-md border border-dashed border-slate-300 p-4 text-center text-slate-600">
-              Coming soon
-            </div>
+            <router-link
+              :to="{ name: 'admin-players-import' }"
+              class="mt-3 inline-flex items-center justify-center rounded-xl px-4 py-2 text-white font-medium shadow-md gbv-grad-blue"
+            >
+              Open Importer
+            </router-link>
           </div>
 
           <div class="rounded-md border border-slate-200 p-4">
             <h3 class="font-semibold text-slate-800">Pools & Seeds</h3>
             <p class="mt-1 text-sm text-slate-600">Drag players into pools and assign seeds.</p>
-            <div class="mt-3 rounded-md border border-dashed border-slate-300 p-4 text-center text-slate-600">
-              Coming soon
-            </div>
+            <router-link
+              :to="{ name: 'admin-pools-seeds' }"
+              class="mt-3 inline-flex items-center justify-center rounded-xl px-4 py-2 text-white font-medium shadow-md gbv-grad-blue"
+            >
+              Open Pools & Seeds
+            </router-link>
           </div>
 
           <div class="rounded-md border border-slate-200 p-4">
             <h3 class="font-semibold text-slate-800">Partner Assignment (Hat Draw)</h3>
             <p class="mt-1 text-sm text-slate-600">Tap seeded player and add drawn partner name (mobile-first).</p>
-            <div class="mt-3 rounded-md border border-dashed border-slate-300 p-4 text-center text-slate-600">
-              Coming soon
-            </div>
+            <router-link
+              :to="{ name: 'admin-partner-assignment' }"
+              class="mt-3 inline-flex items-center justify-center rounded-xl px-4 py-2 text-white font-medium shadow-md gbv-grad-blue"
+            >
+              Open Partner Assignment
+            </router-link>
           </div>
 
           <div class="rounded-md border border-slate-200 p-4">
@@ -68,9 +88,12 @@ async function signOut() {
           <div class="rounded-md border border-slate-200 p-4">
             <h3 class="font-semibold text-slate-800">Generate Schedule</h3>
             <p class="mt-1 text-sm text-slate-600">Create pool-play matches using selected templates.</p>
-            <div class="mt-3 rounded-md border border-dashed border-slate-300 p-4 text-center text-slate-600">
-              Coming soon
-            </div>
+            <router-link
+              :to="{ name: 'admin-generate-schedule' }"
+              class="mt-3 inline-flex items-center justify-center rounded-xl px-4 py-2 text-white font-medium shadow-md gbv-grad-blue"
+            >
+              Open Generator
+            </router-link>
           </div>
 
           <div class="rounded-md border border-slate-200 p-4">

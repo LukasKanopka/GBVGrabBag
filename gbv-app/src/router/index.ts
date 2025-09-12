@@ -37,6 +37,36 @@ const routes: RouteRecordRaw[] = [
     meta: { requiresAdmin: true },
   },
   {
+    path: '/admin/tournament-setup',
+    name: 'admin-tournament-setup',
+    component: () => import('../pages/AdminTournamentSetup.vue'),
+    meta: { requiresAdmin: true },
+  },
+  {
+    path: '/admin/players-import',
+    name: 'admin-players-import',
+    component: () => import('../pages/AdminPlayersImport.vue'),
+    meta: { requiresAdmin: true },
+  },
+  {
+    path: '/admin/pools-seeds',
+    name: 'admin-pools-seeds',
+    component: () => import('../pages/AdminPoolsSeeds.vue'),
+    meta: { requiresAdmin: true },
+  },
+  {
+    path: '/admin/generate-schedule',
+    name: 'admin-generate-schedule',
+    component: () => import('../pages/AdminGenerateSchedule.vue'),
+    meta: { requiresAdmin: true },
+  },
+  {
+    path: '/admin/partner-assignment',
+    name: 'admin-partner-assignment',
+    component: () => import('../pages/AdminPartnerAssignment.vue'),
+    meta: { requiresAdmin: true },
+  },
+  {
     path: '/:pathMatch(.*)*',
     redirect: { name: 'tournament-public' },
   },

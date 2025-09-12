@@ -15,6 +15,8 @@ create table if not exists public.tournaments (
   advancement_rules jsonb,
   game_rules jsonb,
   status text not null default 'draft' check (status in ('draft','setup','pool_play','bracket','completed')),
+  bracket_started boolean not null default false,
+  bracket_generated_at timestamptz,
   created_at timestamptz not null default now()
 );
 
