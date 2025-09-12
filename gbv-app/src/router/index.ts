@@ -1,3 +1,5 @@
+// src/router/index.ts
+
 import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router';
 
 const routes: RouteRecordRaw[] = [
@@ -5,6 +7,7 @@ const routes: RouteRecordRaw[] = [
     path: '/:accessCode?',
     name: 'tournament-public',
     component: () => import('../pages/TournamentPublic.vue'),
+    meta: { fullScreen: true },
   },
   {
     path: '/:accessCode/score',

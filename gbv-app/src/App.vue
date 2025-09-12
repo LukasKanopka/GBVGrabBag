@@ -3,10 +3,10 @@ import Toast from 'primevue/toast';
 </script>
 
 <template>
-  <div class="min-h-dvh flex flex-col">
+  <div class="min-h-dvh flex flex-col" :class="{ 'gbv-grad-green': $route.meta.fullScreen }">
     <Toast />
 
-    <header class="bg-gbv-blue text-white">
+    <header v-if="!$route.meta.fullScreen" class="bg-gbv-blue text-white">
       <div class="mx-auto max-w-6xl px-4 py-4 flex items-center justify-between">
         <h1 class="text-xl sm:text-2xl font-extrabold tracking-tight">
           Gator Beach Volleyball
@@ -14,11 +14,11 @@ import Toast from 'primevue/toast';
       </div>
     </header>
 
-    <main class="flex-1 mx-auto max-w-6xl w-full px-4 py-6">
+    <main class="flex-1" :class="{ 'mx-auto max-w-6xl w-full px-4 py-6': !$route.meta.fullScreen }">
       <router-view />
     </main>
 
-    <footer class="border-t border-slate-200 text-sm text-slate-600 bg-white">
+    <footer v-if="!$route.meta.fullScreen" class="border-t border-slate-200 text-sm text-slate-600 bg-white">
       <div class="mx-auto max-w-6xl px-4 py-4">
         © 2025 Gator Beach Volleyball
       </div>
