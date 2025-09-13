@@ -3,12 +3,55 @@
 import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router';
 
 const routes: RouteRecordRaw[] = [
+  // Public landing (reads access code, redirects to Pools or Bracket)
   {
     path: '/:accessCode?',
     name: 'tournament-public',
     component: () => import('../pages/TournamentPublic.vue'),
     meta: { fullScreen: true },
   },
+
+  // New nested Pool Play routes
+  {
+    path: '/:accessCode/pools',
+    name: 'public-pool-list',
+    component: () => import('../pages/PublicPoolList.vue'),
+    meta: { fullScreen: true },
+  },
+  {
+    path: '/:accessCode/pools/:poolId',
+    name: 'public-pool-details',
+    component: () => import('../pages/PublicPoolDetails.vue'),
+    meta: { fullScreen: true },
+  },
+  {
+    path: '/:accessCode/matches/:matchId',
+    name: 'match-actions',
+    component: () => import('../pages/MatchActions.vue'),
+    meta: { fullScreen: true },
+  },
+  {
+    path: '/:accessCode/matches/:matchId/live',
+    name: 'match-live',
+    component: () => import('../pages/LiveScoreboardMatch.vue'),
+    meta: { fullScreen: true },
+  },
+  {
+    path: '/:accessCode/matches/:matchId/score',
+    name: 'match-score',
+    component: () => import('../pages/ScoreEntryMatch.vue'),
+    meta: { fullScreen: true },
+  },
+
+  // Bracket landing (placeholder for now)
+  {
+    path: '/:accessCode/bracket',
+    name: 'public-bracket',
+    component: () => import('../pages/PublicBracket.vue'),
+    meta: { fullScreen: true },
+  },
+
+  // Legacy public pages (kept for compatibility; may be removed later)
   {
     path: '/:accessCode/score',
     name: 'score-entry',
@@ -19,6 +62,8 @@ const routes: RouteRecordRaw[] = [
     name: 'live-scoreboard',
     component: () => import('../pages/LiveScoreboard.vue'),
   },
+
+  // Admin routes
   {
     path: '/admin/login',
     name: 'admin-login',
@@ -66,6 +111,8 @@ const routes: RouteRecordRaw[] = [
     component: () => import('../pages/AdminPartnerAssignment.vue'),
     meta: { requiresAdmin: true },
   },
+
+  // Fallback
   {
     path: '/:pathMatch(.*)*',
     redirect: { name: 'tournament-public' },

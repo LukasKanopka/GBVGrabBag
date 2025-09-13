@@ -52,7 +52,15 @@ async function refreshTournament(code: string) {
       pools.value = [];
       return;
     }
+    // Load pools for potential fallback UI
     await loadPools();
+
+    // Redirect based on tournament status to nested flow
+    if (t.status === 'pool_play') {
+      router.replace({ name: 'public-pool-list', params: { accessCode: code } });
+    } else if (t.status === 'bracket') {
+      router.replace({ name: 'public-bracket', params: { accessCode: code } });
+    }
   } finally {
     loading.value = false;
   }
@@ -139,7 +147,7 @@ async function changeCode() {
     </div>
   </section>
 
-  <!-- Main Public Hub -->
+  <!-- Main Public Redirect Controller -->
   <section v-else class="mx-auto max-w-3xl px-4 pb-10 pt-6">
     <div class="rounded-2xl border border-slate-200 bg-white shadow-lg">
       <div class="p-5 sm:p-7">
@@ -147,12 +155,12 @@ async function changeCode() {
           <div>
             <h2 class="text-2xl font-semibold text-slate-900">Tournament</h2>
             <p class="mt-1 text-slate-600">
-              View pools, schedule, live standings, and scoreboard.
+              Redirecting you to Pools or Bracket based on tournament phase…
             </p>
           </div>
           <div v-if="loading" class="text-sm text-slate-500">Loading…</div>
         </div>
-
+  
         <div class="mt-6 rounded-xl bg-gbv-bg p-4 text-slate-800">
           <div class="flex items-center justify-between">
             <div>
@@ -168,53 +176,27 @@ async function changeCode() {
             />
           </div>
         </div>
-
-        <div class="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
+  
+        <div class="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
           <router-link
-            :to="{ name: 'score-entry', params: { accessCode: session.accessCode } }"
+            :to="{ name: 'public-pool-list', params: { accessCode: session.accessCode } }"
             class="rounded-xl border border-slate-200 bg-white p-5 text-center shadow-sm hover:shadow-md transition-shadow"
           >
-            <div class="text-lg font-semibold">Score Entry</div>
-            <div class="mt-1 text-sm text-slate-600">Report match results</div>
+            <div class="text-lg font-semibold">Go to Pools</div>
+            <div class="mt-1 text-sm text-slate-600">Standings & schedule</div>
           </router-link>
-
+  
           <router-link
-            :to="{ name: 'live-scoreboard', params: { accessCode: session.accessCode } }"
+            :to="{ name: 'public-bracket', params: { accessCode: session.accessCode } }"
             class="rounded-xl border border-slate-200 bg-white p-5 text-center shadow-sm hover:shadow-md transition-shadow"
           >
-            <div class="text-lg font-semibold">Live Scoreboard</div>
-            <div class="mt-1 text-sm text-slate-600">Real-time scoring view</div>
+            <div class="text-lg font-semibold">Go to Bracket</div>
+            <div class="mt-1 text-sm text-slate-600">Playoff bracket</div>
           </router-link>
-
-          <router-link
-            :to="{ name: 'tournament-public', params: { accessCode: session.accessCode } }"
-            class="rounded-xl border border-slate-200 bg-white p-5 text-center shadow-sm hover:shadow-md transition-shadow"
-          >
-            <div class="text-lg font-semibold">Standings & Schedule</div>
-            <div class="mt-1 text-sm text-slate-600">Coming soon</div>
-          </router-link>
-        </div>
-
-        <!-- Pools List -->
-        <div class="mt-8">
-          <h3 class="text-lg font-semibold text-slate-900">Pools</h3>
-          <div v-if="pools.length === 0" class="mt-2 text-sm text-slate-600">
-            No pools yet.
-          </div>
-          <ul v-else class="mt-3 grid gap-3 sm:grid-cols-2">
-            <li
-              v-for="p in pools"
-              :key="p.id"
-              class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm"
-            >
-              <div class="font-semibold">{{ p.name }}</div>
-              <div class="text-sm text-slate-600">Court: {{ p.court_assignment || 'TBD' }}</div>
-            </li>
-          </ul>
         </div>
       </div>
     </div>
-
+  
     <div class="mt-6 text-center text-sm text-slate-600">
       Admin? Go to
       <router-link class="text-gbv-blue underline" :to="{ name: 'admin-login' }">Admin Login</router-link>

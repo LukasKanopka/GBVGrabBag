@@ -63,10 +63,14 @@ Source of truth: Product Requirements at [PRD.md](PRD.md)
    - Guard against duplicates: if pool matches exist, prompt to confirm overwrite or block
    - Acceptance: Matches inserted per templates; errors clear; no accidental duplicates
 
-5. Public Pools: Matches and Standings
-   - Pool details page: list matches where match_type = pool, ordered by round_number; show ref team and LIVE marker
-   - Standings computed client-side per tiebreaker order from [AdvancementRules](src/types/db.ts)
-   - Acceptance: Standings stable and predictable; updates react on score changes
+5. Public Nested Pool Play UX
+   - Landing after access: if [Tournament.status](src/types/db.ts:52) = pool_play => show Pools list; if = bracket => show Bracket
+   - Pools list page links to Pool details
+   - Pool details: standings on top computed per [AdvancementRules](src/types/db.ts) tiebreakers; schedule below ordered by round_number; display ref team and red LIVE marker when [Match.is_live](src/types/db.ts:99) is true
+   - Match actions: after tapping a match, present two options:
+     - Live Score Recording with Scoreboard (disabled when is_live true)
+     - Enter Score Manually (always available)
+   - Acceptance: Users navigate via Pools -> Pool -> Match -> Action; standings update reactively on score changes; live marker visible and exclusive live scoring enforced by is_live flag.
 
 6. Post-bracket edit warning
    - In [submitScore()](src/pages/ScoreEntry.vue:82) show non-blocking toast when bracket exists or status is bracket
@@ -154,6 +158,21 @@ flowchart TD
   I --> J[Bracket play]
   H -- manual --> K[Manual bracket mode]
   K --> J
+```
+
+## Mermaid — Public Nested Flow
+
+```mermaid
+flowchart TD
+  A[Enter access code] --> B{Tournament status}
+  B -- pool_play --> C[Pools list]
+  C --> D[Pool details: standings top]
+  D --> E[Schedule below]
+  E --> F[Tap match]
+  F --> G[Choose action]
+  G --> H[Live scoreboard]
+  G --> I[Enter score manually]
+  B -- bracket --> J[Bracket view]
 ```
 
 ## Notes
