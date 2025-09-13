@@ -1,13 +1,8 @@
-# Netlify build configuration
 [build]
-  # Directory to change to before starting a build.
   base = "gbv-app"
-  # The command to build your site.
   command = "npm run build"
-  # The directory that contains the deploy-ready HTML files and assets.
-  publish = "gbv-app/dist"
+  publish = "dist"
 
-# Redirect rule for Single-Page Applications (like Vue)
 [[redirects]]
   from = "/*"
   to = "/index.html"
