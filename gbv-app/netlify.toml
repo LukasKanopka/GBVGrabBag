@@ -3,6 +3,12 @@
   command = "npm run build"
   publish = "dist"
 
+[build.environment]
+  # Allow client-side Supabase anon key in the bundle without failing Netlify's secrets scan
+  SECRETS_SCAN_OMIT_KEYS = "VITE_SUPABASE_ANON_KEY"
+  # If needed, you can also omit built assets from scanning (uncomment below)
+  # SECRETS_SCAN_OMIT_PATHS = "dist/**"
+
 [[redirects]]
   from = "/*"
   to = "/index.html"
