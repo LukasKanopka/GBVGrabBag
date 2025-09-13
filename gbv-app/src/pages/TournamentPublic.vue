@@ -99,6 +99,18 @@ async function changeCode() {
     >
       <div class="w-full max-w-xl">
         <div class="text-center">
+              <div class="flex flex-col items-center mb-8">
+              <img 
+                src="@/assets/GBVLogo.png"
+                alt="GBV Logo"
+                class="w-[68vw] sm:w-[60vw] md:w-[48vw] max-w-[512px] h-auto max-h-[32vh] drop-shadow-xl"
+              />
+              <img
+                src="@/assets/GatorBeachVolleyball.png"
+                alt="Gator Beach Volleyball"
+                class="w-[68vw] sm:w-[60vw] md:w-[48vw] max-w-[512px] h-auto mt-4 drop-shadow-xl"
+              />
+              </div>
           <h1 class="text-white text-3xl sm:text-4xl font-extrabold drop-shadow-md">
             Enter the tournament code to continue.
           </h1>
