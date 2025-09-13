@@ -372,12 +372,12 @@ onMounted(async () => {
               </div>
               <div class="mt-3 grid gap-2">
                 <div
-                  v-for="(n, idx) in r.refs"
+                  v-for="idx in r.refs.length"
                   :key="'ref-' + idx"
                   class="flex items-center gap-2"
                 >
                   <Dropdown
-                    v-model="r.refs[idx]"
+                    v-model="r.refs[idx - 1]"
                     :options="seedOptions"
                     optionLabel="label"
                     optionValue="value"
@@ -385,7 +385,7 @@ onMounted(async () => {
                     class="!rounded-xl w-36"
                     :pt="{ input: { class: '!py-2 !px-3 !text-sm !rounded-xl' } }"
                   />
-                  <Button icon="pi pi-times" rounded text severity="danger" @click="removeRef(r.round, idx)" />
+                  <Button icon="pi pi-times" rounded text severity="danger" @click="removeRef(r.round, idx - 1)" />
                 </div>
                 <div v-if="r.refs.length === 0" class="text-xs text-slate-500">No refs yet.</div>
               </div>
@@ -399,12 +399,12 @@ onMounted(async () => {
               </div>
               <div class="mt-3 grid gap-2">
                 <div
-                  v-for="(n, idx) in r.sits"
+                  v-for="idx in r.sits.length"
                   :key="'sit-' + idx"
                   class="flex items-center gap-2"
                 >
                   <Dropdown
-                    v-model="r.sits[idx]"
+                    v-model="r.sits[idx - 1]"
                     :options="seedOptions"
                     optionLabel="label"
                     optionValue="value"
@@ -412,7 +412,7 @@ onMounted(async () => {
                     class="!rounded-xl w-36"
                     :pt="{ input: { class: '!py-2 !px-3 !text-sm !rounded-xl' } }"
                   />
-                  <Button icon="pi pi-times" rounded text severity="danger" @click="removeSit(r.round, idx)" />
+                  <Button icon="pi pi-times" rounded text severity="danger" @click="removeSit(r.round, idx - 1)" />
                 </div>
                 <div v-if="r.sits.length === 0" class="text-xs text-slate-500">No sits yet.</div>
               </div>

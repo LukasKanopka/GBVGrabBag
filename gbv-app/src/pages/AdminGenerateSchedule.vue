@@ -4,7 +4,6 @@ import { useRouter } from 'vue-router';
 import { useToast } from 'primevue/usetoast';
 import InputText from 'primevue/inputtext';
 import Button from 'primevue/button';
-import Card from 'primevue/card';
 import Tag from 'primevue/tag';
 import supabase from '../lib/supabase';
 import { useSessionStore } from '../stores/session';
@@ -84,15 +83,6 @@ async function runPrereqCheck() {
   } finally {
     checking.value = false;
   }
-}
-function changeTournamentCode() {
-  session.clearAccessCode();
-  accessCode.value = '';
-  prereqErrors.value = [];
-  hasMatches.value = false;
-  lastResult.value = null;
-  toast.add({ severity: 'info', summary: 'Tournament cleared', life: 1500 });
-  router.push({ name: 'tournament-public' });
 }
 
 async function deleteExistingPoolMatches() {

@@ -260,10 +260,6 @@ function nameFor(id: string | null) {
   return teamById.value[id]?.full_team_name ?? 'TBD';
 }
 
-function seedFor(id: string | null): number | null {
-  if (!id) return null;
-  return teamById.value[id]?.seed_in_pool ?? null;
-}
 
 function openMatch(matchId: string) {
   router.push({ name: 'match-actions', params: { accessCode: accessCode.value, matchId } });

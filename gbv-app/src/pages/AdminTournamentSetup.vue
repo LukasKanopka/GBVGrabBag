@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue';
+import { ref, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { useToast } from 'primevue/usetoast';
 import InputText from 'primevue/inputtext';
@@ -68,7 +68,6 @@ const form = ref<EditableTournament>({
   bracket_generated_at: null,
 });
 
-const selectedTournament = computed(() => tournaments.value.find((t) => t.id === selectedId.value) || null);
 
 function toForm(t: Tournament | null) {
   if (!t) {
