@@ -3,11 +3,12 @@ import { ref, computed, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { useToast } from 'primevue/usetoast';
 import InputText from 'primevue/inputtext';
-import Textarea from 'primevue/textarea';
 import Dropdown from 'primevue/dropdown';
 import Button from 'primevue/button';
 import DataTable from 'primevue/datatable';
 import Column from 'primevue/column';
+import InputNumber from 'primevue/inputnumber';
+import ToggleButton from 'primevue/togglebutton';
 import supabase from '../lib/supabase';
 import type { Tournament, TournamentStatus, AdvancementRules, GameRules } from '../types/db';
 
@@ -17,8 +18,8 @@ type EditableTournament = {
   date: string; // ISO (YYYY-MM-DD)
   access_code: string;
   status: TournamentStatus;
-  advancement_rules_text: string;
-  game_rules_text: string;
+  advancement_rules: AdvancementRules;
+  game_rules: GameRules;
   bracket_started: boolean;
   bracket_generated_at: string | null;
 };
@@ -39,33 +40,30 @@ const statusOptions: { label: string; value: TournamentStatus }[] = [
   { label: 'Completed', value: 'completed' },
 ];
 
+// Defaults per Bundle C
+const DEFAULT_ADV_RULES: AdvancementRules = {
+  pools: [
+    { fromPoolSize: 3, advanceCount: 2 },
+    { fromPoolSize: 4, advanceCount: 2 },
+    { fromPoolSize: 5, advanceCount: 2 },
+  ],
+  bracketFormat: 'single_elimination',
+  tiebreakers: ['head_to_head', 'set_ratio', 'point_diff', 'random'],
+};
+
+const DEFAULT_GAME_RULES: GameRules = {
+  pool: { setTarget: 21, cap: 25, bestOf: 1, winBy2: true },
+  bracket: { setTarget: 21, cap: 25, bestOf: 1, winBy2: true, thirdSetTarget: 15 },
+};
+
 const form = ref<EditableTournament>({
   id: null,
   name: '',
   date: '',
   access_code: '',
   status: 'draft',
-  advancement_rules_text: JSON.stringify(
-    {
-      pools: [
-        { fromPoolSize: 3, advanceCount: 2 },
-        { fromPoolSize: 4, advanceCount: 2 },
-        { fromPoolSize: 5, advanceCount: 2 },
-      ],
-      bracketFormat: 'single_elimination',
-      tiebreakers: ['head_to_head', 'set_ratio', 'point_diff', 'random'],
-    } as AdvancementRules,
-    null,
-    2
-  ),
-  game_rules_text: JSON.stringify(
-    {
-      pool: { setTarget: 21, cap: 25, bestOf: 1 },
-      bracket: { setTarget: 21, cap: 25, bestOf: 1 },
-    } as GameRules,
-    null,
-    2
-  ),
+  advancement_rules: structuredClone(DEFAULT_ADV_RULES),
+  game_rules: structuredClone(DEFAULT_GAME_RULES),
   bracket_started: false,
   bracket_generated_at: null,
 });
@@ -80,27 +78,8 @@ function toForm(t: Tournament | null) {
       date: '',
       access_code: '',
       status: 'draft',
-      advancement_rules_text: JSON.stringify(
-        {
-          pools: [
-            { fromPoolSize: 3, advanceCount: 2 },
-            { fromPoolSize: 4, advanceCount: 2 },
-            { fromPoolSize: 5, advanceCount: 2 },
-          ],
-          bracketFormat: 'single_elimination',
-          tiebreakers: ['head_to_head', 'set_ratio', 'point_diff', 'random'],
-        } as AdvancementRules,
-        null,
-        2
-      ),
-      game_rules_text: JSON.stringify(
-        {
-          pool: { setTarget: 21, cap: 25, bestOf: 1 },
-          bracket: { setTarget: 21, cap: 25, bestOf: 1 },
-        } as GameRules,
-        null,
-        2
-      ),
+      advancement_rules: structuredClone(DEFAULT_ADV_RULES),
+      game_rules: structuredClone(DEFAULT_GAME_RULES),
       bracket_started: false,
       bracket_generated_at: null,
     };
@@ -112,10 +91,42 @@ function toForm(t: Tournament | null) {
     date: t.date,
     access_code: t.access_code,
     status: t.status,
-    advancement_rules_text: JSON.stringify(t.advancement_rules ?? {}, null, 2),
-    game_rules_text: JSON.stringify(t.game_rules ?? {}, null, 2),
+    advancement_rules: normalizeAdvancementRules(t.advancement_rules),
+    game_rules: normalizeGameRules(t.game_rules),
     bracket_started: (t as any).bracket_started ?? false,
     bracket_generated_at: (t as any).bracket_generated_at ?? null,
+  };
+}
+
+function normalizeAdvancementRules(r: AdvancementRules | null | undefined): AdvancementRules {
+  const base = structuredClone(DEFAULT_ADV_RULES);
+  if (!r) return base;
+  const next: AdvancementRules = {
+    pools: Array.isArray(r.pools) ? r.pools.slice() : base.pools!.slice(),
+    bracketFormat: r.bracketFormat ?? base.bracketFormat,
+    tiebreakers: (r.tiebreakers?.length ? r.tiebreakers : base.tiebreakers) as any,
+  };
+  ensurePoolsConfig(next);
+  return next;
+}
+
+function normalizeGameRules(r: GameRules | null | undefined): GameRules {
+  const base = structuredClone(DEFAULT_GAME_RULES);
+  if (!r) return base;
+  return {
+    pool: {
+      setTarget: r.pool?.setTarget ?? base.pool!.setTarget,
+      cap: r.pool?.cap ?? base.pool!.cap,
+      bestOf: r.pool?.bestOf ?? base.pool!.bestOf,
+      winBy2: r.pool?.winBy2 ?? base.pool!.winBy2,
+    },
+    bracket: {
+      setTarget: r.bracket?.setTarget ?? base.bracket!.setTarget,
+      cap: r.bracket?.cap ?? base.bracket!.cap,
+      bestOf: r.bracket?.bestOf ?? base.bracket!.bestOf,
+      winBy2: r.bracket?.winBy2 ?? base.bracket!.winBy2,
+      thirdSetTarget: r.bracket?.thirdSetTarget ?? base.bracket!.thirdSetTarget,
+    },
   };
 }
 
@@ -147,14 +158,66 @@ function selectTournament(t: Tournament) {
   toForm(t);
 }
 
-function parseJsonOrError(text: string, label: string) {
-  if (!text || !text.trim()) return null;
-  try {
-    return JSON.parse(text);
-  } catch (err: any) {
-    throw new Error(`${label} JSON invalid: ${err?.message || 'Parse error'}`);
+// Helpers — Advancement UI
+
+type Tiebreaker = 'head_to_head' | 'set_ratio' | 'point_diff' | 'random';
+function formatTb(tb: Tiebreaker): string { return String(tb).replace(/_/g, ' '); }
+
+function ensurePoolsConfig(rules: AdvancementRules) {
+  const sizes = [3, 4, 5];
+  if (!Array.isArray(rules.pools)) rules.pools = [];
+  for (const s of sizes) {
+    const existing = rules.pools!.find((p) => p.fromPoolSize === s);
+    if (!existing) rules.pools!.push({ fromPoolSize: s, advanceCount: s === 5 ? 2 : 2 });
   }
+  // sort by size asc
+  rules.pools!.sort((a, b) => a.fromPoolSize - b.fromPoolSize);
 }
+
+function getAdvanceCount(size: number): number {
+  ensurePoolsConfig(form.value.advancement_rules);
+  const found = form.value.advancement_rules.pools!.find((p) => p.fromPoolSize === size);
+  return found?.advanceCount ?? 0;
+}
+
+function setAdvanceCount(size: number, value: number) {
+  ensurePoolsConfig(form.value.advancement_rules);
+  const max = size;
+  const val = Math.max(0, Math.min(max, Number(value) || 0));
+  const found = form.value.advancement_rules.pools!.find((p) => p.fromPoolSize === size);
+  if (found) found.advanceCount = val;
+}
+
+const tiebreakerOptions: Tiebreaker[] = [
+  'head_to_head',
+  'set_ratio',
+  'point_diff',
+  'random',
+];
+
+function moveTiebreaker(idx: number, dir: -1 | 1) {
+  const list = form.value.advancement_rules.tiebreakers || [];
+  const i = idx;
+  const j = i + dir;
+  if (j < 0 || j >= list.length) return;
+  const tmp = list[i]!;
+  list[i] = list[j]!;
+  list[j] = tmp;
+  form.value.advancement_rules.tiebreakers = list.slice();
+}
+
+function toggleTiebreaker(v: Tiebreaker) {
+  const list = (form.value.advancement_rules.tiebreakers || []) as Tiebreaker[];
+  const i = list.indexOf(v);
+  if (i >= 0) {
+    list.splice(i, 1);
+  } else {
+    list.push(v);
+  }
+  form.value.advancement_rules.tiebreakers = list.slice();
+}
+
+// Validation and persistence
 
 function validateForm() {
   if (!form.value.name.trim()) throw new Error('Name is required');
@@ -163,9 +226,29 @@ function validateForm() {
     throw new Error('Date must be YYYY-MM-DD');
   }
   if (!form.value.access_code.trim()) throw new Error('Access code is required');
-  // Validate JSONs
-  parseJsonOrError(form.value.advancement_rules_text, 'Advancement Rules');
-  parseJsonOrError(form.value.game_rules_text, 'Game Rules');
+
+  // Advancement rules sanity
+  ensurePoolsConfig(form.value.advancement_rules);
+  const tb = form.value.advancement_rules.tiebreakers || [];
+  if (tb.length === 0) throw new Error('At least one tiebreaker is required');
+  if (!form.value.advancement_rules.bracketFormat) throw new Error('Bracket format is required');
+
+  // Game rules sanity
+  const gr = form.value.game_rules;
+  const phases: Array<keyof GameRules> = ['pool', 'bracket'];
+  for (const ph of phases) {
+    const r: any = (gr as any)[ph] || {};
+    ['setTarget', 'cap', 'bestOf'].forEach((k) => {
+      if (r[k] == null || Number(r[k]) <= 0) {
+        throw new Error(`Game rules (${ph}) require ${k}`);
+      }
+    });
+    if (ph === 'bracket' && r.bestOf === 3) {
+      if (r.thirdSetTarget == null || Number(r.thirdSetTarget) <= 0) {
+        throw new Error('Game rules (bracket) require thirdSetTarget when bestOf = 3');
+      }
+    }
+  }
 }
 
 async function saveTournament() {
@@ -176,16 +259,13 @@ async function saveTournament() {
     return;
   }
 
-  const advancement_rules = parseJsonOrError(form.value.advancement_rules_text, 'Advancement Rules');
-  const game_rules = parseJsonOrError(form.value.game_rules_text, 'Game Rules');
-
   const payload: any = {
     name: form.value.name.trim(),
     date: form.value.date.trim(),
     access_code: form.value.access_code.trim(),
     status: form.value.status,
-    advancement_rules,
-    game_rules,
+    advancement_rules: form.value.advancement_rules,
+    game_rules: form.value.game_rules,
   };
 
   // Preserve bracket flags only via DB-generated logic; allow manual override here only if present
@@ -264,6 +344,7 @@ onMounted(async () => {
         </div>
 
         <div class="mt-6 grid grid-cols-1 gap-6 sm:grid-cols-3">
+          <!-- Left: Tournaments list -->
           <div class="sm:col-span-1">
             <div class="flex items-center justify-between">
               <h3 class="text-lg font-semibold text-slate-900">Tournaments</h3>
@@ -298,7 +379,9 @@ onMounted(async () => {
             </div>
           </div>
 
+          <!-- Right: Editor -->
           <div class="sm:col-span-2">
+            <!-- Basics -->
             <div class="rounded-xl bg-gbv-bg p-4">
               <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
@@ -327,36 +410,172 @@ onMounted(async () => {
               </div>
             </div>
 
+            <!-- Rules -->
             <div class="mt-6 grid grid-cols-1 gap-6 sm:grid-cols-2">
+              <!-- Advancement Rules -->
               <div class="rounded-xl bg-gbv-bg p-4">
                 <div class="flex items-center justify-between">
-                  <label class="block text-sm font-semibold text-slate-700">Advancement Rules (JSON)</label>
-                  <Button label="Format" text size="small" @click="form.advancement_rules_text = JSON.stringify(JSON.parse(form.advancement_rules_text || '{}'), null, 2)" />
+                  <label class="block text-sm font-semibold text-slate-700">Advancement Rules</label>
                 </div>
-                <Textarea
-                  v-model="form.advancement_rules_text"
-                  autoResize
-                  rows="10"
-                  class="w-full !rounded-xl"
-                  placeholder='{ "pools": [ { "fromPoolSize": 4, "advanceCount": 2 } ], "bracketFormat": "single_elimination", "tiebreakers": ["head_to_head","set_ratio","point_diff","random"] }'
-                />
+
+                <div class="mt-3 space-y-3">
+                  <div class="rounded-lg border border-slate-200 bg-white p-3">
+                    <div class="text-sm font-medium text-slate-800 mb-2">Advancers per Pool Size</div>
+                    <div class="grid grid-cols-1 gap-3">
+                      <div class="flex items-center justify-between gap-3">
+                        <div class="text-sm text-slate-700">3 teams</div>
+                        <Dropdown
+                          :options="[0,1,2,3]"
+                          :modelValue="getAdvanceCount(3)"
+                          @update:modelValue="(v:any) => setAdvanceCount(3, v)"
+                          class="!rounded-xl w-32"
+                          :pt="{ input: { class: '!py-2 !px-3 !text-sm !rounded-xl' } }"
+                        />
+                      </div>
+                      <div class="flex items-center justify-between gap-3">
+                        <div class="text-sm text-slate-700">4 teams</div>
+                        <Dropdown
+                          :options="[0,1,2,3,4]"
+                          :modelValue="getAdvanceCount(4)"
+                          @update:modelValue="(v:any) => setAdvanceCount(4, v)"
+                          class="!rounded-xl w-32"
+                          :pt="{ input: { class: '!py-2 !px-3 !text-sm !rounded-xl' } }"
+                        />
+                      </div>
+                      <div class="flex items-center justify-between gap-3">
+                        <div class="text-sm text-slate-700">5 teams</div>
+                        <Dropdown
+                          :options="[0,1,2,3,4,5]"
+                          :modelValue="getAdvanceCount(5)"
+                          @update:modelValue="(v:any) => setAdvanceCount(5, v)"
+                          class="!rounded-xl w-32"
+                          :pt="{ input: { class: '!py-2 !px-3 !text-sm !rounded-xl' } }"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="rounded-lg border border-slate-200 bg-white p-3">
+                    <div class="text-sm font-medium text-slate-800 mb-2">Bracket Format</div>
+                    <Dropdown
+                      v-model="form.advancement_rules.bracketFormat"
+                      :options="[
+                        { label: 'Single Elimination', value: 'single_elimination' },
+                        { label: 'Best-of-3 Single Elim (Finals)', value: 'best_of_3_single_elim' }
+                      ]"
+                      optionLabel="label"
+                      optionValue="value"
+                      class="w-full !rounded-xl"
+                      :pt="{ input: { class: '!py-2 !px-3 !text-sm !rounded-xl' } }"
+                    />
+                  </div>
+
+                  <div class="rounded-lg border border-slate-200 bg-white p-3">
+                    <div class="text-sm font-medium text-slate-800 mb-2">Tiebreakers (drag order using arrows)</div>
+                    <ul class="space-y-2">
+                      <li
+                        v-for="(tb, idx) in (form.advancement_rules.tiebreakers || [])"
+                        :key="tb"
+                        class="flex items-center justify-between rounded-md border border-slate-200 bg-white p-2"
+                      >
+                        <div class="text-sm font-medium text-slate-800 capitalize">
+                          {{ formatTb(tb as any) }}
+                        </div>
+                        <div class="flex items-center gap-1">
+                          <Button icon="pi pi-arrow-up" text rounded @click="moveTiebreaker(idx, -1)" />
+                          <Button icon="pi pi-arrow-down" text rounded @click="moveTiebreaker(idx, 1)" />
+                        </div>
+                      </li>
+                    </ul>
+                    <div class="mt-3 flex flex-wrap gap-2">
+                      <Button
+                        v-for="opt in tiebreakerOptions"
+                        :key="opt"
+                        :label="(((form.advancement_rules.tiebreakers || []) as Tiebreaker[]).includes(opt) ? 'Remove ' : 'Add ') + formatTb(opt as any)"
+                        size="small"
+                        :severity="((form.advancement_rules.tiebreakers || []) as Tiebreaker[]).includes(opt) ? 'danger' : 'secondary'"
+                        outlined
+                        class="!rounded-xl"
+                        @click="toggleTiebreaker(opt)"
+                      />
+                    </div>
+                  </div>
+                </div>
               </div>
 
+              <!-- Game Rules -->
               <div class="rounded-xl bg-gbv-bg p-4">
                 <div class="flex items-center justify-between">
-                  <label class="block text-sm font-semibold text-slate-700">Game Rules (JSON)</label>
-                  <Button label="Format" text size="small" @click="form.game_rules_text = JSON.stringify(JSON.parse(form.game_rules_text || '{}'), null, 2)" />
+                  <label class="block text-sm font-semibold text-slate-700">Game Rules</label>
                 </div>
-                <Textarea
-                  v-model="form.game_rules_text"
-                  autoResize
-                  rows="10"
-                  class="w-full !rounded-xl"
-                  placeholder='{ "pool": { "setTarget": 21, "cap": 25, "bestOf": 1 }, "bracket": { "setTarget": 21, "cap": 25, "bestOf": 3 } }'
-                />
+
+                <div class="mt-3 grid grid-cols-1 gap-4">
+                  <div class="rounded-lg border border-slate-200 bg-white p-3">
+                    <div class="text-sm font-semibold text-slate-900">Pool Play</div>
+                    <div class="mt-3 grid grid-cols-2 gap-3">
+                      <div>
+                        <label class="block text-xs text-slate-600 mb-1">Set Target</label>
+                        <InputNumber v-model="form.game_rules.pool!.setTarget" :min="1" class="w-full" :pt="{ input: { class: '!w-full !py-2 !px-3 !rounded-xl' } }" />
+                      </div>
+                      <div>
+                        <label class="block text-xs text-slate-600 mb-1">Cap</label>
+                        <InputNumber v-model="form.game_rules.pool!.cap" :min="1" class="w-full" :pt="{ input: { class: '!w-full !py-2 !px-3 !rounded-xl' } }" />
+                      </div>
+                      <div>
+                        <label class="block text-xs text-slate-600 mb-1">Best Of</label>
+                        <Dropdown
+                          v-model="form.game_rules.pool!.bestOf"
+                          :options="[1,3]"
+                          class="w-full !rounded-xl"
+                          :pt="{ input: { class: '!py-2 !px-3 !text-sm !rounded-xl' } }"
+                        />
+                      </div>
+                      <div class="flex items-end">
+                        <div class="flex items-center gap-2">
+                          <span class="text-sm text-slate-700">Win by 2</span>
+                          <ToggleButton v-model="form.game_rules.pool!.winBy2" onLabel="Yes" offLabel="No" />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="rounded-lg border border-slate-200 bg-white p-3">
+                    <div class="text-sm font-semibold text-slate-900">Bracket</div>
+                    <div class="mt-3 grid grid-cols-2 gap-3">
+                      <div>
+                        <label class="block text-xs text-slate-600 mb-1">Set Target</label>
+                        <InputNumber v-model="form.game_rules.bracket!.setTarget" :min="1" class="w-full" :pt="{ input: { class: '!w-full !py-2 !px-3 !rounded-xl' } }" />
+                      </div>
+                      <div>
+                        <label class="block text-xs text-slate-600 mb-1">Cap</label>
+                        <InputNumber v-model="form.game_rules.bracket!.cap" :min="1" class="w-full" :pt="{ input: { class: '!w-full !py-2 !px-3 !rounded-xl' } }" />
+                      </div>
+                      <div>
+                        <label class="block text-xs text-slate-600 mb-1">Best Of</label>
+                        <Dropdown
+                          v-model="form.game_rules.bracket!.bestOf"
+                          :options="[1,3]"
+                          class="w-full !rounded-xl"
+                          :pt="{ input: { class: '!py-2 !px-3 !text-sm !rounded-xl' } }"
+                        />
+                      </div>
+                      <div class="flex items-end">
+                        <div class="flex items-center gap-2">
+                          <span class="text-sm text-slate-700">Win by 2</span>
+                          <ToggleButton v-model="form.game_rules.bracket!.winBy2" onLabel="Yes" offLabel="No" />
+                        </div>
+                      </div>
+                      <div v-if="form.game_rules.bracket!.bestOf === 3">
+                        <label class="block text-xs text-slate-600 mb-1">Third Set Target</label>
+                        <InputNumber v-model="form.game_rules.bracket!.thirdSetTarget" :min="1" class="w-full" :pt="{ input: { class: '!w-full !py-2 !px-3 !rounded-xl' } }" />
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
 
+            <!-- Bracket flags -->
             <div class="mt-6 grid grid-cols-1 gap-6 sm:grid-cols-2">
               <div class="rounded-xl border border-slate-200 p-4">
                 <div class="text-sm text-slate-700">Bracket Started</div>
@@ -366,6 +585,7 @@ onMounted(async () => {
               </div>
             </div>
 
+            <!-- Actions -->
             <div class="mt-6 flex items-center gap-3">
               <Button
                 :loading="saving"

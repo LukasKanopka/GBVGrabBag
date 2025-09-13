@@ -29,7 +29,8 @@ const loading = ref(false);
 const savingId = ref<string | null>(null);
 
 const teams = ref<TeamRow[]>([]);
-const onlyMissing = ref<boolean>(false);
+const onlyMissing = ref<boolean>(true);
+const searchText = ref<string>('');
 
 // Derived
 const totalCount = computed(() => teams.value.length);
@@ -42,10 +43,22 @@ const completeness = computed(() => {
 });
 
 const displayRows = computed(() => {
+  const q = (searchText.value || '').toLowerCase().trim();
   let rows = teams.value.slice();
+
   if (onlyMissing.value) {
     rows = rows.filter((t) => !t.partner_name || t.partner_name.trim() === '');
   }
+  if (q) {
+    rows = rows.filter((t) => {
+      const pooled = (t.pooled_name || '').toLowerCase();
+      const seeded = (t.seeded_player_name || '').toLowerCase();
+      const partner = (t.partner_name || '').toLowerCase();
+      const full = (t.full_team_name || '').toLowerCase();
+      return pooled.includes(q) || seeded.includes(q) || partner.includes(q) || full.includes(q);
+    });
+  }
+
   // Sort by pool name/group then seed number
   return rows.sort((a, b) => {
     if (a.pool_id && b.pool_id) {
@@ -170,6 +183,20 @@ async function savePartner(teamId: string) {
   }
 }
 
+function clearPartner(teamId: string) {
+  partnerInput.value[teamId] = '';
+  savePartner(teamId);
+}
+
+function changeTournamentCode() {
+  session.clearAccessCode();
+  accessCode.value = '';
+  teams.value = [];
+  partnerInput.value = {};
+  toast.add({ severity: 'info', summary: 'Tournament cleared', life: 1500 });
+  router.push({ name: 'tournament-public' });
+}
+
 onMounted(() => {
   // Wait for explicit load by access code for consistency with other admin pages
 });
@@ -196,9 +223,10 @@ onMounted(() => {
           />
         </div>
 
-        <!-- Tournament loader -->
+        <!-- Tournament context -->
         <div class="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
-          <div class="rounded-xl bg-gbv-bg p-4 sm:col-span-3">
+          <!-- Loader shown only when no tournament is loaded -->
+          <div class="rounded-xl bg-gbv-bg p-4 sm:col-span-3" v-if="!session.tournament">
             <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
               <div class="sm:col-span-2">
                 <label class="block text-sm font-medium text-slate-700 mb-2">Tournament Access Code</label>
@@ -218,20 +246,50 @@ onMounted(() => {
                 />
               </div>
             </div>
-            <div v-if="session.tournament" class="mt-2 text-sm text-slate-700">
-              Loaded: <span class="font-semibold">{{ session.tournament.name }}</span>
+          </div>
+          <!-- Subtle chip when tournament is loaded -->
+          <div class="rounded-xl bg-gbv-bg p-4 sm:col-span-3" v-else>
+            <div class="flex items-center justify-between">
+              <div class="text-sm text-slate-700">
+                Tournament:
+                <span class="font-semibold">{{ session.tournament.name }}</span>
+                <span class="ml-2 text-slate-500">({{ session.accessCode }})</span>
+              </div>
+              <Button
+                label="Change"
+                severity="secondary"
+                text
+                class="!rounded-xl"
+                icon="pi pi-external-link"
+                @click="changeTournamentCode"
+              />
             </div>
           </div>
         </div>
 
-        <div v-if="session.tournament" class="mt-4 flex items-center justify-between rounded-xl bg-gbv-bg p-4">
-          <div class="text-sm text-slate-700">
-            Assigned: <span class="font-semibold">{{ assignedCount }}</span> / {{ totalCount }}
-            <span class="ml-2 text-slate-500">({{ completeness }}%)</span>
-          </div>
-          <div class="flex items-center gap-3">
-            <span class="text-sm text-slate-700">Only Missing</span>
-            <ToggleButton v-model="onlyMissing" onLabel="Yes" offLabel="No" />
+        <div v-if="session.tournament" class="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <div class="rounded-xl bg-gbv-bg p-4 sm:col-span-3">
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
+              <div class="sm:col-span-2">
+                <label class="block text-sm font-medium text-slate-700 mb-2">Search teams or players</label>
+                <InputText
+                  v-model="searchText"
+                  placeholder="Type to filter by seeded, partner, pool, or team name…"
+                  class="w-full !rounded-xl !px-4 !py-3"
+                />
+              </div>
+              <div class="flex items-center justify-between sm:justify-end gap-4">
+                <div class="text-sm text-slate-700 whitespace-nowrap">
+                  Assigned:
+                  <span class="font-semibold">{{ assignedCount }}</span> / {{ totalCount }}
+                  <span class="ml-2 text-slate-500">({{ completeness }}%)</span>
+                </div>
+                <div class="flex items-center gap-2">
+                  <span class="text-sm text-slate-700">Only Missing</span>
+                  <ToggleButton v-model="onlyMissing" onLabel="Yes" offLabel="No" />
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -264,6 +322,17 @@ onMounted(() => {
                       icon="pi pi-check"
                       class="!rounded-xl border-none text-white gbv-grad-blue"
                       @click="savePartner(data.id)"
+                    />
+                  </div>
+                  <div class="flex justify-end">
+                    <Button
+                      :loading="savingId === data.id"
+                      label="Clear"
+                      icon="pi pi-times"
+                      severity="secondary"
+                      outlined
+                      class="!rounded-xl"
+                      @click="clearPartner(data.id)"
                     />
                   </div>
                 </div>

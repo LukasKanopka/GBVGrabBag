@@ -1,8 +1,6 @@
--- Gator Beach Volleyball - Supabase schema
--- Apply in Supabase SQL Editor or via migrations
-
--- Required for gen_random_uuid()
-create extension if not exists "pgcrypto";
+-- 1) Extensions schema + extension installation (install extensions into a dedicated schema)
+create schema if not exists extensions;
+create extension if not exists "pgcrypto" with schema extensions;
 
 -- =========================
 -- tournaments
@@ -78,6 +76,12 @@ create index if not exists matches_tournament_idx on public.matches(tournament_i
 create index if not exists matches_pool_idx on public.matches(pool_id);
 create index if not exists matches_match_type_idx on public.matches(match_type);
 
+-- Indexes for FK columns on matches to speed joins
+create index if not exists idx_matches_team1 on public.matches(team1_id);
+create index if not exists idx_matches_team2 on public.matches(team2_id);
+create index if not exists idx_matches_ref_team on public.matches(ref_team_id);
+create index if not exists idx_matches_winner on public.matches(winner_id);
+
 -- =========================
 -- schedule_templates
 -- =========================
@@ -101,50 +105,82 @@ alter table public.teams enable row level security;
 alter table public.matches enable row level security;
 alter table public.schedule_templates enable row level security;
 
--- Allow read for everyone (public app usage)
-create policy if not exists "tournaments_read_all" on public.tournaments for select using (true);
-create policy if not exists "pools_read_all" on public.pools for select using (true);
-create policy if not exists "teams_read_all" on public.teams for select using (true);
-create policy if not exists "matches_read_all" on public.matches for select using (true);
-create policy if not exists "schedule_templates_read_all" on public.schedule_templates for select using (true);
+-- Idempotent policy creation pattern: DROP IF EXISTS, then CREATE
+-- PUBLIC read access (explicit TO public) — replace TO public with TO authenticated if you want only logged-in users
+drop policy if exists "tournaments_read_all" on public.tournaments;
+create policy "tournaments_read_all" on public.tournaments for select to public using (true);
+
+drop policy if exists "pools_read_all" on public.pools;
+create policy "pools_read_all" on public.pools for select to public using (true);
+
+drop policy if exists "teams_read_all" on public.teams;
+create policy "teams_read_all" on public.teams for select to public using (true);
+
+drop policy if exists "matches_read_all" on public.matches;
+create policy "matches_read_all" on public.matches for select to public using (true);
+
+drop policy if exists "schedule_templates_read_all" on public.schedule_templates;
+create policy "schedule_templates_read_all" on public.schedule_templates for select to public using (true);
 
 -- For MVP: allow inserts/updates on matches to any authenticated user
--- (Players will submit scores; Admin uses same anon key in client. Tighten with auth later.)
-create policy if not exists "matches_write_authenticated" on public.matches
-for insert
-to authenticated
-with check (true);
+drop policy if exists "matches_write_authenticated" on public.matches;
+create policy "matches_write_authenticated" on public.matches for insert to authenticated with check (true);
 
-create policy if not exists "matches_update_authenticated" on public.matches
-for update
-to authenticated
-using (true)
-with check (true);
+drop policy if exists "matches_update_authenticated" on public.matches;
+create policy "matches_update_authenticated" on public.matches for update to authenticated using (true) with check (true);
 
--- Admin write access (authenticated). You can later restrict by roles or JWT claims.
-create policy if not exists "tournaments_write_authenticated" on public.tournaments
-for all
-to authenticated
-using (true)
-with check (true);
+-- Admin write access (authenticated) — split FOR ALL into explicit policies (do NOT use FOR ALL)
+-- tournaments
+drop policy if exists "tournaments_select_authenticated" on public.tournaments;
+create policy "tournaments_select_authenticated" on public.tournaments for select to authenticated using (true);
 
-create policy if not exists "pools_write_authenticated" on public.pools
-for all
-to authenticated
-using (true)
-with check (true);
+drop policy if exists "tournaments_insert_authenticated" on public.tournaments;
+create policy "tournaments_insert_authenticated" on public.tournaments for insert to authenticated with check (true);
 
-create policy if not exists "teams_write_authenticated" on public.teams
-for all
-to authenticated
-using (true)
-with check (true);
+drop policy if exists "tournaments_update_authenticated" on public.tournaments;
+create policy "tournaments_update_authenticated" on public.tournaments for update to authenticated using (true) with check (true);
 
-create policy if not exists "schedule_templates_write_authenticated" on public.schedule_templates
-for all
-to authenticated
-using (true)
-with check (true);
+drop policy if exists "tournaments_delete_authenticated" on public.tournaments;
+create policy "tournaments_delete_authenticated" on public.tournaments for delete to authenticated using (true);
+
+-- pools
+drop policy if exists "pools_select_authenticated" on public.pools;
+create policy "pools_select_authenticated" on public.pools for select to authenticated using (true);
+
+drop policy if exists "pools_insert_authenticated" on public.pools;
+create policy "pools_insert_authenticated" on public.pools for insert to authenticated with check (true);
+
+drop policy if exists "pools_update_authenticated" on public.pools;
+create policy "pools_update_authenticated" on public.pools for update to authenticated using (true) with check (true);
+
+drop policy if exists "pools_delete_authenticated" on public.pools;
+create policy "pools_delete_authenticated" on public.pools for delete to authenticated using (true);
+
+-- teams
+drop policy if exists "teams_select_authenticated" on public.teams;
+create policy "teams_select_authenticated" on public.teams for select to authenticated using (true);
+
+drop policy if exists "teams_insert_authenticated" on public.teams;
+create policy "teams_insert_authenticated" on public.teams for insert to authenticated with check (true);
+
+drop policy if exists "teams_update_authenticated" on public.teams;
+create policy "teams_update_authenticated" on public.teams for update to authenticated using (true) with check (true);
+
+drop policy if exists "teams_delete_authenticated" on public.teams;
+create policy "teams_delete_authenticated" on public.teams for delete to authenticated using (true);
+
+-- schedule_templates
+drop policy if exists "schedule_templates_select_authenticated" on public.schedule_templates;
+create policy "schedule_templates_select_authenticated" on public.schedule_templates for select to authenticated using (true);
+
+drop policy if exists "schedule_templates_insert_authenticated" on public.schedule_templates;
+create policy "schedule_templates_insert_authenticated" on public.schedule_templates for insert to authenticated with check (true);
+
+drop policy if exists "schedule_templates_update_authenticated" on public.schedule_templates;
+create policy "schedule_templates_update_authenticated" on public.schedule_templates for update to authenticated using (true) with check (true);
+
+drop policy if exists "schedule_templates_delete_authenticated" on public.schedule_templates;
+create policy "schedule_templates_delete_authenticated" on public.schedule_templates for delete to authenticated using (true);
 
 -- =========================
 -- Helpful constraints/triggers (optional)

@@ -85,6 +85,15 @@ async function runPrereqCheck() {
     checking.value = false;
   }
 }
+function changeTournamentCode() {
+  session.clearAccessCode();
+  accessCode.value = '';
+  prereqErrors.value = [];
+  hasMatches.value = false;
+  lastResult.value = null;
+  toast.add({ severity: 'info', summary: 'Tournament cleared', life: 1500 });
+  router.push({ name: 'tournament-public' });
+}
 
 async function deleteExistingPoolMatches() {
   if (!session.tournament) return;
@@ -258,7 +267,7 @@ async function runGenerate() {
         </div>
 
         <div class="mt-6 text-sm text-slate-600">
-          Note: Generation uses admin-defined templates for each pool size. Ensure all seeded players have partners and templates exist for each pool size in use.
+          Note: Generation uses admin-defined templates per pool size. Only pool sizes 3–5 are supported. Ensure all seeded players have partners and templates exist for each size in use.
         </div>
       </div>
     </div>

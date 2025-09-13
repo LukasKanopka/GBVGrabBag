@@ -251,6 +251,15 @@ async function deleteTeam(team: TeamRow) {
   }
 }
 
+function changeTournamentCode() {
+  session.clearAccessCode();
+  accessCode.value = '';
+  teams.value = [];
+  parsedNames.value = [];
+  toast.add({ severity: 'info', summary: 'Tournament cleared', life: 1500 });
+  router.push({ name: 'tournament-public' });
+}
+
 onMounted(async () => {
   // No-op until a tournament is loaded; keep consistent with other admin pages
 });
@@ -277,9 +286,10 @@ onMounted(async () => {
           />
         </div>
 
-        <!-- Tournament loader -->
+        <!-- Tournament context -->
         <div class="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
-          <div class="rounded-xl bg-gbv-bg p-4 sm:col-span-3">
+          <!-- Loader shown only when no tournament is loaded -->
+          <div class="rounded-xl bg-gbv-bg p-4 sm:col-span-3" v-if="!session.tournament">
             <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
               <div class="sm:col-span-2">
                 <label class="block text-sm font-medium text-slate-700 mb-2">Tournament Access Code</label>
@@ -299,8 +309,23 @@ onMounted(async () => {
                 />
               </div>
             </div>
-            <div v-if="session.tournament" class="mt-2 text-sm text-slate-700">
-              Loaded: <span class="font-semibold">{{ session.tournament.name }}</span>
+          </div>
+          <!-- Subtle chip when tournament is loaded -->
+          <div class="rounded-xl bg-gbv-bg p-4 sm:col-span-3" v-else>
+            <div class="flex items-center justify-between">
+              <div class="text-sm text-slate-700">
+                Tournament:
+                <span class="font-semibold">{{ session.tournament.name }}</span>
+                <span class="ml-2 text-slate-500">({{ session.accessCode }})</span>
+              </div>
+              <Button
+                label="Change"
+                severity="secondary"
+                text
+                class="!rounded-xl"
+                icon="pi pi-external-link"
+                @click="changeTournamentCode"
+              />
             </div>
           </div>
         </div>

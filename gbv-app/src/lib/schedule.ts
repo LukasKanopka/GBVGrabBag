@@ -57,7 +57,16 @@ export async function checkPrerequisites(tournamentId: string): Promise<{ ok: bo
   }
 
   const sizesNeeded = Array.from(new Set(Array.from(poolSizeToCount.values()))).sort((a, b) => a - b);
-  for (const sz of sizesNeeded) {
+
+  // Enforce supported pool sizes (3–5)
+  const allowedSizes = new Set<number>([3, 4, 5]);
+  const invalidSizes = sizesNeeded.filter((sz) => !allowedSizes.has(sz));
+  for (const sz of invalidSizes) {
+    errors.push(`Unsupported pool size ${sz}. Only 3–5 are supported.`);
+  }
+
+  // Check templates for supported sizes only
+  for (const sz of sizesNeeded.filter((s) => allowedSizes.has(s))) {
     const { data: tmpl, error: tmplErr } = await supabase
       .from('schedule_templates')
       .select('id')

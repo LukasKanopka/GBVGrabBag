@@ -5,17 +5,14 @@ import { useSessionStore } from '../stores/session';
 import supabase from '../lib/supabase';
 import Button from 'primevue/button';
 import Dropdown from 'primevue/dropdown';
-import InputText from 'primevue/inputtext';
-import Textarea from 'primevue/textarea';
-import DataTable from 'primevue/datatable';
-import Column from 'primevue/column';
 import { useToast } from 'primevue/usetoast';
 
+type Matchup = { a: number | null; b: number | null };
 type RoundRow = {
   round: number;
-  play: string; // JSON: e.g., [[1,2],[3,4]]
-  ref?: string; // JSON: e.g., [3,4]
-  sit?: string; // JSON: e.g., [5]
+  plays: Matchup[];     // array of matchups [a vs b]
+  refs: (number | null)[]; // array of referee seeds
+  sits: (number | null)[]; // array of sitting seeds
 };
 
 const toast = useToast();
@@ -24,50 +21,79 @@ const session = useSessionStore();
 
 const accessCode = ref<string>(session.accessCode ?? '');
 const selectedPoolSize = ref<number | null>(null);
-const poolSizeOptions = [3, 4, 5, 6, 7, 8].map((n) => ({ label: `${n} teams`, value: n }));
-const templateRows = ref<RoundRow[]>([]);
 
-const rowErrors = computed(() =>
-  templateRows.value.map((r) => ({
-    play: isValidJson(r.play) ? null : 'Invalid JSON',
-    ref: isValidJson(r.ref) ? null : 'Invalid JSON',
-    sit: isValidJson(r.sit) ? null : 'Invalid JSON',
-  })),
-);
+// Limit pool sizes to 3–5 per requirements
+const poolSizeOptions = [3, 4, 5].map((n) => ({ label: `${n} teams`, value: n }));
+
+const rounds = ref<RoundRow[]>([]);
 
 const loading = ref(false);
 const saving = ref(false);
 
-function isValidJson(s?: string) {
-  if (s == null || s.trim() === '') return true;
-  try {
-    const v = JSON.parse(s);
-    return Array.isArray(v) || typeof v === 'object';
-  } catch {
-    return false;
-  }
-}
+const seedOptions = computed(() => {
+  const size = selectedPoolSize.value ?? 0;
+  return Array.from({ length: size }, (_, i) => {
+    const v = i + 1;
+    return { label: `${v}`, value: v };
+  });
+});
 
 function addRound() {
-  const last = templateRows.value.length ? templateRows.value[templateRows.value.length - 1] : null;
+  const last = rounds.value.length ? rounds.value[rounds.value.length - 1] : null;
   const nextRound = ((last && last.round) ? last.round : 0) + 1;
-  templateRows.value.push({ round: nextRound, play: '[]', ref: '[]', sit: '[]' });
+  rounds.value.push({ round: nextRound, plays: [], refs: [], sits: [] });
 }
 
-function removeRound(round: number) {
-  templateRows.value = templateRows.value.filter((r) => r.round !== round);
+function removeRound(roundNo: number) {
+  rounds.value = rounds.value.filter((r) => r.round !== roundNo).map((r, idx) => ({ ...r, round: idx + 1 }));
 }
 
-function moveRound(round: number, dir: -1 | 1) {
-  const idx = templateRows.value.findIndex((r) => r.round === round);
+function moveRound(roundNo: number, dir: -1 | 1) {
+  const idx = rounds.value.findIndex((r) => r.round === roundNo);
   if (idx < 0) return;
   const newIdx = idx + dir;
-  if (newIdx < 0 || newIdx >= templateRows.value.length) return;
-  const tmp = templateRows.value[idx];
-  templateRows.value[idx] = templateRows.value[newIdx];
-  templateRows.value[newIdx] = tmp;
-  // Re-number rounds for clarity
-  templateRows.value = templateRows.value.map((r, i) => ({ ...r, round: i + 1 }));
+  if (newIdx < 0 || newIdx >= rounds.value.length) return;
+  const tmp = rounds.value[idx];
+  rounds.value[idx] = rounds.value[newIdx];
+  rounds.value[newIdx] = tmp;
+  // Renumber
+  rounds.value = rounds.value.map((r, i) => ({ ...r, round: i + 1 }));
+}
+
+function addMatchup(roundNo: number) {
+  const r = rounds.value.find((x) => x.round === roundNo);
+  if (!r) return;
+  r.plays.push({ a: null, b: null });
+}
+
+function removeMatchup(roundNo: number, idx: number) {
+  const r = rounds.value.find((x) => x.round === roundNo);
+  if (!r) return;
+  r.plays.splice(idx, 1);
+}
+
+function addRef(roundNo: number) {
+  const r = rounds.value.find((x) => x.round === roundNo);
+  if (!r) return;
+  r.refs.push(null);
+}
+
+function removeRef(roundNo: number, idx: number) {
+  const r = rounds.value.find((x) => x.round === roundNo);
+  if (!r) return;
+  r.refs.splice(idx, 1);
+}
+
+function addSit(roundNo: number) {
+  const r = rounds.value.find((x) => x.round === roundNo);
+  if (!r) return;
+  r.sits.push(null);
+}
+
+function removeSit(roundNo: number, idx: number) {
+  const r = rounds.value.find((x) => x.round === roundNo);
+  if (!r) return;
+  r.sits.splice(idx, 1);
 }
 
 async function loadTournamentByAccessCode() {
@@ -93,7 +119,7 @@ async function loadTournamentByAccessCode() {
 
 async function loadTemplate() {
   if (!session.tournament || !selectedPoolSize.value) {
-    templateRows.value = [];
+    rounds.value = [];
     return;
   }
   loading.value = true;
@@ -106,23 +132,46 @@ async function loadTemplate() {
       .maybeSingle();
     if (error) {
       toast.add({ severity: 'error', summary: 'Load failed', detail: error.message, life: 2500 });
-      templateRows.value = [];
+      rounds.value = [];
       return;
     }
     if (!data || !data.template_data || !Array.isArray(data.template_data)) {
-      templateRows.value = [];
+      rounds.value = [];
       return;
     }
-    // map to editable rows
-    templateRows.value = (data.template_data as any[]).map((r: any) => ({
-      round: r.round,
-      play: JSON.stringify(r.play ?? []),
-      ref: r.ref ? JSON.stringify(r.ref) : '[]',
-      sit: r.sit ? JSON.stringify(r.sit) : '[]',
+    // Map to UI rows
+    rounds.value = (data.template_data as any[]).map((r: any, i: number) => ({
+      round: r.round ?? i + 1,
+      plays: Array.isArray(r.play) ? r.play.map((p: any) => ({ a: Number(p[0]) || null, b: Number(p[1]) || null })) : [],
+      refs: Array.isArray(r.ref) ? r.ref.map((n: any) => (Number(n) || null)) : [],
+      sits: Array.isArray(r.sit) ? r.sit.map((n: any) => (Number(n) || null)) : [],
     }));
   } finally {
     loading.value = false;
   }
+}
+
+function validateRounds(): string[] {
+  const issues: string[] = [];
+  const size = selectedPoolSize.value ?? 0;
+  rounds.value.forEach((r) => {
+    r.plays.forEach((m, idx) => {
+      if (m.a == null || m.b == null) {
+        issues.push(`Round ${r.round}: matchup #${idx + 1} has empty seed`);
+      } else {
+        if (m.a < 1 || m.a > size) issues.push(`Round ${r.round}: matchup #${idx + 1} seed A out of range 1-${size}`);
+        if (m.b < 1 || m.b > size) issues.push(`Round ${r.round}: matchup #${idx + 1} seed B out of range 1-${size}`);
+        if (m.a === m.b) issues.push(`Round ${r.round}: matchup #${idx + 1} cannot have same seed on both sides`);
+      }
+    });
+    r.refs.forEach((n, i) => {
+      if (n != null && (n < 1 || n > size)) issues.push(`Round ${r.round}: ref #${i + 1} out of range 1-${size}`);
+    });
+    r.sits.forEach((n, i) => {
+      if (n != null && (n < 1 || n > size)) issues.push(`Round ${r.round}: sit #${i + 1} out of range 1-${size}`);
+    });
+  });
+  return issues;
 }
 
 async function saveTemplate() {
@@ -134,16 +183,21 @@ async function saveTemplate() {
     toast.add({ severity: 'warn', summary: 'Select pool size', life: 2000 });
     return;
   }
-  const anyInvalid = rowErrors.value.some((e) => e.play || e.ref || e.sit);
-  if (anyInvalid) {
-    toast.add({ severity: 'error', summary: 'Fix invalid JSON rows', life: 2500 });
+
+  const problems = validateRounds();
+  if (problems.length > 0) {
+    toast.add({ severity: 'error', summary: 'Fix template issues', detail: `${problems.length} issue(s) found`, life: 3500 });
     return;
   }
-  const template = templateRows.value.map((r) => ({
+
+  // Map UI rows to DB template_data shape
+  const template = rounds.value.map((r) => ({
     round: r.round,
-    play: r.play ? JSON.parse(r.play) : [],
-    ref: r.ref ? JSON.parse(r.ref) : [],
-    sit: r.sit ? JSON.parse(r.sit) : [],
+    play: r.plays
+      .filter((m) => m.a != null && m.b != null)
+      .map((m) => [m.a, m.b]),
+    ref: r.refs.filter((n): n is number => n != null),
+    sit: r.sits.filter((n): n is number => n != null),
   }));
 
   saving.value = true;
@@ -186,7 +240,7 @@ onMounted(async () => {
           <div>
             <h2 class="text-2xl font-semibold text-slate-900">Schedule Templates</h2>
             <p class="mt-1 text-slate-600">
-              Define round-by-round templates per pool size. Use JSON arrays for matchups and assignments.
+              Define round-by-round templates per pool size using pickers. No JSON editing required.
             </p>
           </div>
           <Button
@@ -199,15 +253,16 @@ onMounted(async () => {
           />
         </div>
 
+        <!-- Tournament loader -->
         <div class="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
           <div class="rounded-xl bg-gbv-bg p-4 sm:col-span-3">
             <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
               <div class="sm:col-span-2">
                 <label class="block text-sm font-medium text-slate-700 mb-2">Tournament Access Code</label>
-                <InputText
+                <input
                   v-model="accessCode"
                   placeholder="e.g. GATORS2025"
-                  class="w-full !rounded-xl !px-4 !py-3"
+                  class="w-full rounded-xl border border-slate-300 px-4 py-3 text-slate-800"
                 />
               </div>
               <div class="flex">
@@ -226,6 +281,7 @@ onMounted(async () => {
           </div>
         </div>
 
+        <!-- Pool size & helper note -->
         <div class="mt-6 grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div class="sm:col-span-1">
             <label class="block text-sm font-medium text-slate-700 mb-2">Pool Size</label>
@@ -238,90 +294,133 @@ onMounted(async () => {
               class="w-full !rounded-xl"
               :pt="{ input: { class: '!py-3 !px-4 !text-base !rounded-xl' } }"
             />
+            <p class="mt-2 text-xs text-slate-500">
+              Supported sizes: 3–5 teams.
+            </p>
           </div>
 
           <div class="sm:col-span-2">
             <div class="rounded-xl bg-gbv-bg p-4">
-              <p class="text-sm text-slate-700">
-                JSON fields:
-              </p>
               <ul class="mt-1 text-sm text-slate-700 list-disc list-inside">
-                <li><span class="font-semibold">play</span>: array of [seedA, seedB], e.g. [[1,2],[3,4]]</li>
-                <li><span class="font-semibold">ref</span>: array of seed refs, e.g. [3,4]</li>
-                <li><span class="font-semibold">sit</span>: array of seeds sitting out, e.g. [5]</li>
+                <li>Each round can contain multiple matchups.</li>
+                <li>Refs and sits are optional lists of seeds.</li>
+                <li>Seeds refer to seed_in_pool numbers (1..pool size) from Pools & Seeds.</li>
               </ul>
             </div>
           </div>
         </div>
 
-        <div class="mt-6">
-          <DataTable
-            :value="templateRows"
-            size="large"
-            class="rounded-xl overflow-hidden"
-            tableClass="!text-base"
+        <!-- Rounds Builder -->
+        <div v-if="selectedPoolSize" class="mt-6 grid grid-cols-1 gap-4">
+          <div
+            v-for="r in rounds"
+            :key="r.round"
+            class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm"
           >
-            <Column field="round" header="Round" style="width: 7rem">
-              <template #body="{ data }">
-                <div class="flex items-center gap-2">
-                  <Button icon="pi pi-arrow-up" text rounded @click="moveRound(data.round, -1)" />
-                  <Button icon="pi pi-arrow-down" text rounded @click="moveRound(data.round, 1)" />
-                  <span class="font-semibold">{{ data.round }}</span>
-                </div>
-              </template>
-            </Column>
+            <div class="flex items-center justify-between">
+              <div class="font-semibold text-slate-900">Round {{ r.round }}</div>
+              <div class="flex items-center gap-1">
+                <Button icon="pi pi-arrow-up" text rounded @click="moveRound(r.round, -1)" />
+                <Button icon="pi pi-arrow-down" text rounded @click="moveRound(r.round, 1)" />
+                <Button icon="pi pi-trash" text rounded severity="danger" @click="removeRound(r.round)" />
+              </div>
+            </div>
 
-            <Column field="play" header="Play (matchups)">
-              <template #body="{ data, index }">
-                <Textarea
-                  v-model="templateRows[index].play"
-                  autoResize
-                  rows="2"
-                  class="w-full !rounded-xl"
-                  :invalid="!!rowErrors[index].play"
-                />
-                <div v-if="rowErrors[index].play" class="mt-1 text-xs text-red-600">
-                  {{ rowErrors[index].play }}
+            <!-- Matchups -->
+            <div class="mt-3 rounded-lg bg-gbv-bg p-3">
+              <div class="flex items-center justify-between">
+                <div class="text-sm font-medium text-slate-800">Matchups</div>
+                <Button label="Add Matchup" size="small" icon="pi pi-plus" class="!rounded-xl" @click="addMatchup(r.round)" />
+              </div>
+              <div class="mt-3 grid gap-2">
+                <div
+                  v-for="(m, idx) in r.plays"
+                  :key="idx"
+                  class="flex items-center gap-2"
+                >
+                  <Dropdown
+                    v-model="m.a"
+                    :options="seedOptions"
+                    optionLabel="label"
+                    optionValue="value"
+                    placeholder="Seed A"
+                    class="!rounded-xl w-36"
+                    :pt="{ input: { class: '!py-2 !px-3 !text-sm !rounded-xl' } }"
+                  />
+                  <span class="text-slate-600">vs</span>
+                  <Dropdown
+                    v-model="m.b"
+                    :options="seedOptions"
+                    optionLabel="label"
+                    optionValue="value"
+                    placeholder="Seed B"
+                    class="!rounded-xl w-36"
+                    :pt="{ input: { class: '!py-2 !px-3 !text-sm !rounded-xl' } }"
+                  />
+                  <div class="flex-1"></div>
+                  <Button icon="pi pi-times" rounded text severity="danger" @click="removeMatchup(r.round, idx)" />
                 </div>
-              </template>
-            </Column>
+                <div v-if="r.plays.length === 0" class="text-xs text-slate-500">No matchups yet.</div>
+              </div>
+            </div>
 
-            <Column field="ref" header="Ref (seeds)" style="width: 16rem">
-              <template #body="{ data, index }">
-                <InputText
-                  v-model="templateRows[index].ref"
-                  class="w-full !rounded-xl"
-                  :invalid="!!rowErrors[index].ref"
-                />
-                <div v-if="rowErrors[index].ref" class="mt-1 text-xs text-red-600">
-                  {{ rowErrors[index].ref }}
+            <!-- Refs -->
+            <div class="mt-3 rounded-lg bg-gbv-bg p-3">
+              <div class="flex items-center justify-between">
+                <div class="text-sm font-medium text-slate-800">Refs (seeds)</div>
+                <Button label="Add Ref" size="small" icon="pi pi-plus" class="!rounded-xl" @click="addRef(r.round)" />
+              </div>
+              <div class="mt-3 grid gap-2">
+                <div
+                  v-for="(n, idx) in r.refs"
+                  :key="'ref-' + idx"
+                  class="flex items-center gap-2"
+                >
+                  <Dropdown
+                    v-model="r.refs[idx]"
+                    :options="seedOptions"
+                    optionLabel="label"
+                    optionValue="value"
+                    placeholder="Seed"
+                    class="!rounded-xl w-36"
+                    :pt="{ input: { class: '!py-2 !px-3 !text-sm !rounded-xl' } }"
+                  />
+                  <Button icon="pi pi-times" rounded text severity="danger" @click="removeRef(r.round, idx)" />
                 </div>
-              </template>
-            </Column>
+                <div v-if="r.refs.length === 0" class="text-xs text-slate-500">No refs yet.</div>
+              </div>
+            </div>
 
-            <Column field="sit" header="Sit (seeds)" style="width: 16rem">
-              <template #body="{ data, index }">
-                <InputText
-                  v-model="templateRows[index].sit"
-                  class="w-full !rounded-xl"
-                  :invalid="!!rowErrors[index].sit"
-                />
-                <div v-if="rowErrors[index].sit" class="mt-1 text-xs text-red-600">
-                  {{ rowErrors[index].sit }}
+            <!-- Sits -->
+            <div class="mt-3 rounded-lg bg-gbv-bg p-3">
+              <div class="flex items-center justify-between">
+                <div class="text-sm font-medium text-slate-800">Sit (seeds)</div>
+                <Button label="Add Sit" size="small" icon="pi pi-plus" class="!rounded-xl" @click="addSit(r.round)" />
+              </div>
+              <div class="mt-3 grid gap-2">
+                <div
+                  v-for="(n, idx) in r.sits"
+                  :key="'sit-' + idx"
+                  class="flex items-center gap-2"
+                >
+                  <Dropdown
+                    v-model="r.sits[idx]"
+                    :options="seedOptions"
+                    optionLabel="label"
+                    optionValue="value"
+                    placeholder="Seed"
+                    class="!rounded-xl w-36"
+                    :pt="{ input: { class: '!py-2 !px-3 !text-sm !rounded-xl' } }"
+                  />
+                  <Button icon="pi pi-times" rounded text severity="danger" @click="removeSit(r.round, idx)" />
                 </div>
-              </template>
-            </Column>
+                <div v-if="r.sits.length === 0" class="text-xs text-slate-500">No sits yet.</div>
+              </div>
+            </div>
+          </div>
 
-            <Column header="">
-              <template #body="{ data }">
-                <div class="flex justify-end">
-                  <Button icon="pi pi-trash" severity="danger" text rounded @click="removeRound(data.round)" />
-                </div>
-              </template>
-            </Column>
-          </DataTable>
-
-          <div class="mt-4 flex items-center gap-3">
+          <!-- Round actions -->
+          <div class="flex items-center gap-3">
             <Button
               label="Add Round"
               icon="pi pi-plus"
@@ -338,6 +437,10 @@ onMounted(async () => {
               @click="saveTemplate"
             />
           </div>
+        </div>
+
+        <div v-else class="mt-6 rounded-xl border border-dashed border-slate-300 p-4 text-sm text-slate-600">
+          Select a pool size to begin.
         </div>
       </div>
     </div>

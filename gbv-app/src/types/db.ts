@@ -26,16 +26,19 @@ export interface AdvancementRules {
 }
 
 export interface GameRules {
-  // Example: pool vs bracket caps/targets
+  // Example: pool vs bracket caps/targets + win-by-2 and finals third set target
   pool?: {
-    setTarget?: number; // e.g., 21
-    cap?: number;       // e.g., 25
-    bestOf?: number;    // e.g., 1 = single set
+    setTarget?: number;  // e.g., 21
+    cap?: number;        // e.g., 25
+    bestOf?: number;     // e.g., 1 = single set
+    winBy2?: boolean;    // e.g., true = must win by 2
   };
   bracket?: {
     setTarget?: number;
     cap?: number;
-    bestOf?: number; // 1 or 3
+    bestOf?: number;       // 1 or 3
+    winBy2?: boolean;      // e.g., true = must win by 2
+    thirdSetTarget?: number; // e.g., 15 when bestOf = 3
   };
 }
 
