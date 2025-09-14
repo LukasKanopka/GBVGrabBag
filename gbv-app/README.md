@@ -140,3 +140,22 @@ supabase/
 
 - Admin authentication uses Supabase email/password. For production, define dedicated Admin users and tighten RLS by role/JWT claims.
 - Players use the access code to view data and submit scores; for MVP, writes are allowed to authenticated (Anon) users per RLS policy. This will be restricted in later iterations.
+
+
+## Admin Testing: Fill Pool Scores Randomly
+
+To quickly test bracket generation without manually entering pool scores:
+
+- Generate pool schedule using [src/pages/AdminGenerateSchedule.vue](src/pages/AdminGenerateSchedule.vue)
+- Open the Bracket admin page [src/pages/AdminBracket.vue](src/pages/AdminBracket.vue)
+- Click “Fill Pool Scores Randomly”
+  - This calls [fillRandomPoolScores()](src/lib/testData.ts:93) to populate only pool matches that have no scores
+  - Winners are 50/50 random between Team 1 and Team 2
+  - Scores follow [GameRules.pool](src/types/db.ts:30) with defaults: target 21, cap 25, win-by-2; plausible outcomes like 21–17, 22–20, 23–21, and occasional 25–24 at cap
+  - Existing scored matches are not modified; matches missing a team are skipped
+- Click “Generate Bracket”
+  - This uses [generateBracket()](src/lib/bracket.ts:315) with standings computed from the filled pool scores
+
+Notes:
+- To reset, you can delete pool matches on the Generate Schedule page [src/pages/AdminGenerateSchedule.vue](src/pages/AdminGenerateSchedule.vue) and re-generate.
+- The helper lives at [src/lib/testData.ts](src/lib/testData.ts) and is wired into [src/pages/AdminBracket.vue](src/pages/AdminBracket.vue).

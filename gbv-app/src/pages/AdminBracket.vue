@@ -11,6 +11,7 @@ import UiSectionHeading from '@/components/ui/UiSectionHeading.vue';
 import supabase from '../lib/supabase';
 import { useSessionStore } from '../stores/session';
 import { generateBracket, rebuildBracket } from '../lib/bracket';
+import { fillRandomPoolScores } from '../lib/testData';
 
 type UUID = string;
 
@@ -165,6 +166,31 @@ async function doRebuild() {
   }
 }
 
+async function doFillPoolScores() {
+  if (!session.tournament) {
+    toast.add({ severity: 'warn', summary: 'Load a tournament first', life: 1500 });
+    return;
+  }
+  const confirmed = confirm('Are you sure? This will randomly fill scores for all unscored pool matches in this tournament. This cannot be undone.');
+  if (!confirmed) return;
+
+  running.value = true;
+  try {
+    const res = await fillRandomPoolScores(session.tournament.id);
+    const errs = res.errors || [];
+    if (errs.length === 0) {
+      toast.add({ severity: 'success', summary: `Filled ${res.updated} pool match(es)`, life: 2000 });
+    } else {
+      toast.add({ severity: 'warn', summary: `Filled ${res.updated}, with ${errs.length} error(s)`, life: 3500 });
+      console.warn('fillRandomPoolScores errors:', errs);
+    }
+  } catch (err: any) {
+    toast.add({ severity: 'error', summary: 'Fill failed', detail: err?.message ?? 'Unknown error', life: 3000 });
+  } finally {
+    running.value = false;
+  }
+}
+
 async function updateTeam(m: Match, side: 'team1_id' | 'team2_id', value: string | null) {
   if (!session.tournament) return;
   const { error } = await supabase
@@ -257,6 +283,13 @@ onMounted(async () => {
               icon="pi pi-sitemap"
               class="!rounded-xl border-none text-white gbv-grad-green"
               @click="doGenerate"
+            />
+            <Button
+              :loading="running"
+              label="Fill Pool Scores Randomly"
+              icon="pi pi-random"
+              class="!rounded-xl border-none text-white gbv-grad-blue"
+              @click="doFillPoolScores"
             />
             <Button
               :loading="running"

@@ -217,7 +217,7 @@ onMounted(async () => {
 
       <div class="mt-6 grid grid-cols-1 sm:grid-cols-2 gap-5">
         <div>
-          <label class="block text-sm font-medium text-white/80 mb-2">{{ nameFor(match?.team1_id ?? null) }} Score</label>
+          <label class="block text-sm font-medium text-white/80 mb-2">Team 1 Score</label>
           <InputNumber
             v-model="team1Score"
             showButtons
@@ -233,7 +233,7 @@ onMounted(async () => {
         </div>
 
         <div>
-          <label class="block text-sm font-medium text-white/80 mb-2">{{ nameFor(match?.team2_id ?? null) }} Score</label>
+          <label class="block text-sm font-medium text-white/80 mb-2">Team 2 Score</label>
           <InputNumber
             v-model="team2Score"
             showButtons

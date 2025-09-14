@@ -282,6 +282,13 @@ function nameFor(id: string | null) {
 }
 
 
+function completedLabel(m: Match): string {
+  const s1 = m.team1_score;
+  const s2 = m.team2_score;
+  if (s1 == null || s2 == null) return '';
+  return `Completed: ${s1}\u2013${s2}`;
+}
+
 function openMatch(matchId: string) {
   router.push({ name: 'match-actions', params: { accessCode: accessCode.value, matchId } });
 }
@@ -405,6 +412,12 @@ onBeforeUnmount(async () => {
                 <div class="text-sm text-white/80">
                   Round {{ m.round_number ?? '—' }}
                 </div>
+                <span
+                  v-if="m.team1_score != null && m.team2_score != null"
+                  class="ml-3 inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-white/10 ring-1 ring-white/20 text-white/90"
+                >
+                  {{ completedLabel(m) }}
+                </span>
               </div>
               <div class="mt-1 font-semibold text-white">
                 {{ nameFor(m.team1_id) }} vs {{ nameFor(m.team2_id) }}
