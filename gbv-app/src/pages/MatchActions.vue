@@ -136,7 +136,9 @@ onMounted(async () => {
           <Button
             label="Enter Score Manually"
             icon="pi pi-pencil"
-            class="!rounded-2xl !px-6 !py-4 !text-lg !font-semibold border-none text-white gbv-grad-blue"
+            severity="secondary"
+            size="large"
+            class="!rounded-2xl !px-6 !py-4 !text-lg !font-semibold text-white bg-white/10 ring-1 ring-white/20"
             @click="goManual"
           />
         </div>

@@ -217,7 +217,7 @@ onMounted(async () => {
 
       <div class="mt-6 grid grid-cols-1 sm:grid-cols-2 gap-5">
         <div>
-          <label class="block text-sm font-medium text-white/80 mb-2">Team 1 Score</label>
+          <label class="block text-sm font-medium text-white/80 mb-2">{{ nameFor(match?.team1_id ?? null) }} Score</label>
           <InputNumber
             v-model="team1Score"
             showButtons
@@ -233,7 +233,7 @@ onMounted(async () => {
         </div>
 
         <div>
-          <label class="block text-sm font-medium text-white/80 mb-2">Team 2 Score</label>
+          <label class="block text-sm font-medium text-white/80 mb-2">{{ nameFor(match?.team2_id ?? null) }} Score</label>
           <InputNumber
             v-model="team2Score"
             showButtons
@@ -253,9 +253,10 @@ onMounted(async () => {
         <Button
           :disabled="!match || team1Score === null || team2Score === null"
           label="Submit Score"
+          severity="secondary"
           size="large"
           icon="pi pi-check-circle"
-          class="!rounded-2xl !px-6 !py-4 !text-lg !font-semibold border-none text-white gbv-grad-blue"
+          class="!rounded-2xl !px-6 !py-4 !text-lg !font-semibold text-white bg-white/10 ring-1 ring-white/20"
           @click="submitScore"
         />
       </div>

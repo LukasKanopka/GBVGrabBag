@@ -239,9 +239,10 @@ onMounted(async () => {
           <Button
             :disabled="!selectedMatch || team1Score === null || team2Score === null"
             label="Submit Score"
+            severity="secondary"
             size="large"
             icon="pi pi-check-circle"
-            class="!rounded-2xl !px-6 !py-4 !text-lg !font-semibold border-none text-white gbv-grad-blue"
+            class="!rounded-2xl !px-6 !py-4 !text-lg !font-semibold text-white bg-white/10 ring-1 ring-white/20"
             @click="submitScore"
           />
         </div>
