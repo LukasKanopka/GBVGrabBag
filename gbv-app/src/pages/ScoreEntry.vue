@@ -104,7 +104,11 @@ async function submitScore() {
     toast.add({ severity: 'error', summary: 'Submit failed', detail: 'Missing tournament context', life: 3000 });
     return;
   }
-  const { error } = await supabase
+
+  // Instrumentation to detect silent 204/no-op (likely RLS or wrong filter)
+  console.debug('[ScoreEntry] submitScore update', { id, t1, t2, winner_id });
+
+  const { data, error } = await supabase
     .from('matches')
     .update({
       team1_score: t1,
@@ -114,10 +118,23 @@ async function submitScore() {
       live_score_team1: null,
       live_score_team2: null,
     })
-    .eq('id', id);
+    .eq('id', id)
+    .select('id, team1_score, team2_score, winner_id')
+    .single();
+
+  console.debug('[ScoreEntry] update result', { hasData: !!data, error });
 
   if (error) {
     toast.add({ severity: 'error', summary: 'Submit failed', detail: error.message, life: 3000 });
+    return;
+  }
+  if (!data) {
+    toast.add({
+      severity: 'error',
+      summary: 'No rows updated',
+      detail: 'Update likely blocked by Row Level Security. Ensure anonymous auth is enabled or relax RLS for updates.',
+      life: 4000
+    });
     return;
   }
 

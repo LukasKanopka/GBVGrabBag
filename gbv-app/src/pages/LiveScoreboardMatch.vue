@@ -249,7 +249,15 @@ async function submitFinal() {
     return;
   }
 
-  const { error } = await supabase
+  // Instrument: detect silent 204/no-op scenarios
+  console.debug('[LiveScoreboardMatch] submitFinal update', {
+    id: liveMatchId.value,
+    s1: score1.value,
+    s2: score2.value,
+    winId,
+  });
+
+  const { data, error } = await supabase
     .from('matches')
     .update({
       team1_score: score1.value ?? 0,
@@ -259,10 +267,23 @@ async function submitFinal() {
       live_score_team1: null,
       live_score_team2: null,
     })
-    .eq('id', liveMatchId.value);
+    .eq('id', liveMatchId.value)
+    .select('id, team1_score, team2_score, winner_id')
+    .single();
+
+  console.debug('[LiveScoreboardMatch] submitFinal result', { hasData: !!data, error });
 
   if (error) {
     toast.add({ severity: 'error', summary: 'Submit failed', detail: error.message, life: 3000 });
+    return;
+  }
+  if (!data) {
+    toast.add({
+      severity: 'error',
+      summary: 'No rows updated',
+      detail: 'Update likely blocked by Row Level Security. Policies must allow public update or user must be authenticated.',
+      life: 4000,
+    });
     return;
   }
 

@@ -143,12 +143,16 @@ create policy "matches_read_all" on public.matches for select to public using (t
 drop policy if exists "schedule_templates_read_all" on public.schedule_templates;
 create policy "schedule_templates_read_all" on public.schedule_templates for select to public using (true);
 
--- For MVP: allow inserts/updates on matches to any authenticated user
+-- For MVP: allow inserts/updates on matches to any public user (relaxed)
+-- Drop any prior policies to avoid duplicates
 drop policy if exists "matches_write_authenticated" on public.matches;
-create policy "matches_write_authenticated" on public.matches for insert to authenticated with check (true);
-
 drop policy if exists "matches_update_authenticated" on public.matches;
-create policy "matches_update_authenticated" on public.matches for update to authenticated using (true) with check (true);
+drop policy if exists "matches_write_public" on public.matches;
+drop policy if exists "matches_update_public" on public.matches;
+
+create policy "matches_write_public" on public.matches for insert to public with check (true);
+
+create policy "matches_update_public" on public.matches for update to public using (true) with check (true);
 
 -- Admin write access (authenticated) — split FOR ALL into explicit policies (do NOT use FOR ALL)
 -- tournaments
