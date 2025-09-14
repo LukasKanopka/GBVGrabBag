@@ -70,47 +70,45 @@ onMounted(async () => {
 
 <template>
   <PublicLayout>
-    <div class="rounded-2xl border border-slate-200 bg-white shadow-lg">
-      <div class="p-5 sm:p-7">
+    <section class="p-5 sm:p-7">
         <div class="flex items-center justify-between gap-3">
           <div>
-            <h2 class="text-2xl font-semibold text-slate-900">Pools</h2>
-            <p class="mt-1 text-slate-600">
+            <h2 class="text-2xl font-semibold text-white">Pools</h2>
+            <p class="mt-1 text-white/80">
               Choose a pool to view standings and schedule.
             </p>
           </div>
-          <div v-if="loading" class="text-sm text-slate-500">Loading…</div>
+          <div v-if="loading" class="text-sm text-white/80">Loading…</div>
         </div>
 
-        <div class="mt-6 rounded-xl bg-gbv-bg p-4 text-slate-800">
-          <p class="text-sm">Access Code</p>
+        <div class="mt-6 rounded-xl bg-white/10 ring-1 ring-white/20 p-4 text-white">
+          <p class="text-sm text-white/80">Access Code</p>
           <p class="font-semibold tracking-wide">{{ accessCode || '—' }}</p>
         </div>
 
         <div class="mt-6">
-          <div v-if="pools.length === 0" class="text-sm text-slate-600">
+          <div v-if="pools.length === 0" class="text-sm text-white/80">
             No pools yet.
           </div>
           <ul v-else class="grid gap-3 sm:grid-cols-2">
             <li
               v-for="p in pools"
               :key="p.id"
-              class="cursor-pointer rounded-xl border border-slate-200 bg-white p-4 shadow-sm hover:shadow-md transition-shadow"
+              class="cursor-pointer rounded-xl bg-white/10 ring-1 ring-white/20 p-4 hover:bg-white/15 transition-colors text-white"
               @click="openPool(p.id)"
             >
               <div class="font-semibold">{{ p.name }}</div>
-              <div class="text-sm text-slate-600">Court: {{ p.court_assignment || 'TBD' }}</div>
+              <div class="text-sm text-white/80">Court: {{ p.court_assignment || 'TBD' }}</div>
             </li>
           </ul>
         </div>
 
-        <div class="mt-8 text-sm text-slate-600 text-center">
+        <div class="mt-8 text-sm text-white/80 text-center">
           Return to
-          <router-link class="text-gbv-blue underline" :to="{ name: 'tournament-public', params: { accessCode } }">
+          <router-link class="underline" :to="{ name: 'tournament-public', params: { accessCode } }">
             Tournament
           </router-link>
         </div>
-      </div>
-    </div>
+    </section>
   </PublicLayout>
 </template>

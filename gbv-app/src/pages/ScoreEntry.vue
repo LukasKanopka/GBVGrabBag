@@ -7,6 +7,7 @@ import InputNumber from 'primevue/inputnumber';
 import Button from 'primevue/button';
 import { useToast } from 'primevue/usetoast';
 import supabase from '../lib/supabase';
+import PublicLayout from '../components/layout/PublicLayout.vue';
 
 type Team = { id: string; full_team_name: string };
 type MatchRow = {
@@ -127,90 +128,88 @@ onMounted(async () => {
 </script>
 
 <template>
-  <section class="mx-auto max-w-3xl px-4 pb-10 pt-6">
-    <div class="rounded-2xl border border-slate-200 bg-white shadow-lg">
-      <div class="p-5 sm:p-7">
-        <div class="flex items-center justify-between">
-          <h2 class="text-2xl font-semibold text-slate-900">Score Entry</h2>
-          <div v-if="loading" class="text-sm text-slate-500">Loading…</div>
-        </div>
-        <p class="mt-1 text-slate-600">
-          Submit final scores for completed matches. Validation and tiebreakers apply on the server.
+  <PublicLayout>
+    <section class="p-5 sm:p-7">
+      <div class="flex items-center justify-between">
+        <h2 class="text-2xl font-semibold text-white">Score Entry</h2>
+        <div v-if="loading" class="text-sm text-white/80">Loading…</div>
+      </div>
+      <p class="mt-1 text-white/80">
+        Submit final scores for completed matches. Validation and tiebreakers apply on the server.
+      </p>
+
+      <div class="mt-4 rounded-xl bg-white/10 ring-1 ring-white/20 p-4 text-white">
+        <p class="text-sm text-white/80">
+          Access Code:
+          <span class="font-semibold text-white">{{ accessCode || '—' }}</span>
         </p>
+      </div>
 
-        <div class="mt-4 rounded-xl bg-gbv-bg p-4">
-          <p class="text-sm text-slate-700">
-            Access Code:
-            <span class="font-semibold">{{ accessCode || '—' }}</span>
-          </p>
+      <div class="mt-6 grid gap-5">
+        <div>
+          <label class="block text-sm font-medium text-white/80 mb-2">Select Match</label>
+          <Dropdown
+            v-model="selectedMatch"
+            :options="matches"
+            optionLabel="label"
+            placeholder="Choose a match..."
+            class="w-full !rounded-xl"
+            :pt="{ input: { class: '!py-3 !px-4 !text-base !rounded-xl' } }"
+          />
         </div>
 
-        <div class="mt-6 grid gap-5">
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-5">
           <div>
-            <label class="block text-sm font-medium text-slate-700 mb-2">Select Match</label>
-            <Dropdown
-              v-model="selectedMatch"
-              :options="matches"
-              optionLabel="label"
-              placeholder="Choose a match..."
-              class="w-full !rounded-xl"
-              :pt="{ input: { class: '!py-3 !px-4 !text-base !rounded-xl' } }"
+            <label class="block text-sm font-medium text-white/80 mb-2">Team 1 Score</label>
+            <InputNumber
+              v-model="team1Score"
+              showButtons
+              :min="0"
+              class="w-full"
+              :pt="{
+                root: { class: 'w-full' },
+                input: { class: '!w-full !py-3 !px-4 !text-xl !rounded-xl' },
+                incrementButton: { class: '!rounded-r-xl' },
+                decrementButton: { class: '!rounded-l-xl' }
+              }"
             />
           </div>
 
-          <div class="grid grid-cols-1 sm:grid-cols-2 gap-5">
-            <div>
-              <label class="block text-sm font-medium text-slate-700 mb-2">Team 1 Score</label>
-              <InputNumber
-                v-model="team1Score"
-                showButtons
-                :min="0"
-                class="w-full"
-                :pt="{
-                  root: { class: 'w-full' },
-                  input: { class: '!w-full !py-3 !px-4 !text-xl !rounded-xl' },
-                  incrementButton: { class: '!rounded-r-xl' },
-                  decrementButton: { class: '!rounded-l-xl' }
-                }"
-              />
-            </div>
-
-            <div>
-              <label class="block text-sm font-medium text-slate-700 mb-2">Team 2 Score</label>
-              <InputNumber
-                v-model="team2Score"
-                showButtons
-                :min="0"
-                class="w-full"
-                :pt="{
-                  root: { class: 'w-full' },
-                  input: { class: '!w-full !py-3 !px-4 !text-xl !rounded-xl' },
-                  incrementButton: { class: '!rounded-r-xl' },
-                  decrementButton: { class: '!rounded-l-xl' }
-                }"
-              />
-            </div>
-          </div>
-
-          <div class="flex items-center justify-center">
-            <Button
-              :disabled="!selectedMatch || team1Score === null || team2Score === null"
-              label="Submit Score"
-              size="large"
-              icon="pi pi-check-circle"
-              class="!rounded-2xl !px-6 !py-4 !text-lg !font-semibold border-none text-white gbv-grad-blue"
-              @click="submitScore"
+          <div>
+            <label class="block text-sm font-medium text-white/80 mb-2">Team 2 Score</label>
+            <InputNumber
+              v-model="team2Score"
+              showButtons
+              :min="0"
+              class="w-full"
+              :pt="{
+                root: { class: 'w-full' },
+                input: { class: '!w-full !py-3 !px-4 !text-xl !rounded-xl' },
+                incrementButton: { class: '!rounded-r-xl' },
+                decrementButton: { class: '!rounded-l-xl' }
+              }"
             />
           </div>
         </div>
 
-        <div class="mt-8 text-sm text-slate-600 text-center">
-          Return to
-          <router-link class="text-gbv-blue underline" :to="{ name: 'tournament-public', params: { accessCode } }">
-            Tournament
-          </router-link>
+        <div class="flex items-center justify-center">
+          <Button
+            :disabled="!selectedMatch || team1Score === null || team2Score === null"
+            label="Submit Score"
+            size="large"
+            icon="pi pi-check-circle"
+            class="!rounded-2xl !px-6 !py-4 !text-lg !font-semibold border-none text-white gbv-grad-blue"
+            @click="submitScore"
+          />
         </div>
       </div>
-    </div>
-  </section>
+
+      <div class="mt-8 text-sm text-white/80 text-center">
+        Return to
+        <router-link class="underline" :to="{ name: 'tournament-public', params: { accessCode } }">
+          Tournament
+        </router-link>
+      </div>
+    </section>
+  </PublicLayout>
 </template>

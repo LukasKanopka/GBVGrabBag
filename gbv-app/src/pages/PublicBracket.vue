@@ -163,52 +163,44 @@ onBeforeUnmount(async () => {
 
 <template>
   <PublicLayout>
-    <div class="rounded-2xl border border-slate-200 bg-white shadow-lg">
-      <div class="p-5 sm:p-7">
+    <section class="p-5 sm:p-7">
         <div class="flex items-center justify-between gap-3">
           <div>
-            <h2 class="text-2xl font-semibold text-slate-900">Bracket</h2>
-            <p class="mt-1 text-slate-600">
+            <h2 class="text-2xl font-semibold text-white">Bracket</h2>
+            <p class="mt-1 text-white/80">
               Playoff bracket. Tap a match to view actions.
             </p>
           </div>
-          <div v-if="loading" class="text-sm text-slate-500">Loading…</div>
+          <div v-if="loading" class="text-sm text-white/80">Loading…</div>
         </div>
 
-        <div class="mt-6 rounded-xl bg-gbv-bg p-4 text-slate-800">
-          <p class="text-sm">Access Code</p>
+        <div class="mt-6 rounded-xl bg-white/10 ring-1 ring-white/20 p-4 text-white">
+          <p class="text-sm text-white/80">Access Code</p>
           <p class="font-semibold tracking-wide">{{ accessCode || '—' }}</p>
         </div>
 
-        <div v-if="matches.length === 0" class="mt-6 rounded-xl border border-dashed border-slate-300 p-6 text-center text-slate-600">
+        <div v-if="matches.length === 0" class="mt-6 rounded-xl border border-dashed border-white/30 p-6 text-center text-white/80">
           No bracket matches yet.
         </div>
 
         <div v-else class="mt-6 space-y-6">
-          <div v-for="[r, arr] in groupedByRound()" :key="r" class="rounded-xl border border-slate-200 bg-white">
-            <div class="border-b border-slate-200 px-4 py-3">
-              <div class="text-sm font-semibold text-slate-700">{{ roundTitle(r) }}</div>
+          <div v-for="[r, arr] in groupedByRound()" :key="r" class="rounded-xl bg-white/10 ring-1 ring-white/20">
+            <div class="border-b border-white/25 px-4 py-3">
+              <div class="text-sm font-semibold text-white/80">{{ roundTitle(r) }}</div>
             </div>
             <ul class="p-4 grid gap-3">
               <li
                 v-for="m in arr"
                 :key="m.id"
-                class="cursor-pointer rounded-xl border border-slate-200 bg-white p-4 shadow-sm hover:shadow-md transition-shadow"
+                class="cursor-pointer rounded-xl bg-white/10 ring-1 ring-white/20 p-4 hover:bg-white/15 transition-colors text-white"
                 @click="openMatch(m)"
               >
                 <div class="flex items-center justify-between">
-                  <div class="text-sm text-slate-600">
+                  <div class="text-sm text-white/80">
                     {{ m.match_type === 'bracket' ? 'Bracket' : 'Pool' }}{{ m.round_number ? ` R${m.round_number}` : '' }}
                   </div>
-                  <div
-                    v-if="m.is_live"
-                    class="inline-flex items-center gap-2 rounded-full px-2.5 py-1 text-xs font-semibold uppercase tracking-wide text-white bg-red-600"
-                  >
-                    <span class="size-2 rounded-full bg-white/90"></span>
-                    Live
-                  </div>
                 </div>
-                <div class="mt-1 font-semibold text-slate-900">
+                <div class="mt-1 font-semibold text-white">
                   {{ nameFor(m.team1_id) }} vs {{ nameFor(m.team2_id) }}
                 </div>
               </li>
@@ -216,13 +208,12 @@ onBeforeUnmount(async () => {
           </div>
         </div>
 
-        <div class="mt-8 text-sm text-slate-600 text-center">
+        <div class="mt-8 text-sm text-white/80 text-center">
           Back to
-          <router-link class="text-gbv-blue underline" :to="{ name: 'tournament-public', params: { accessCode } }">
+          <router-link class="underline" :to="{ name: 'tournament-public', params: { accessCode } }">
             Tournament
           </router-link>
         </div>
-      </div>
-    </div>
+    </section>
   </PublicLayout>
 </template>

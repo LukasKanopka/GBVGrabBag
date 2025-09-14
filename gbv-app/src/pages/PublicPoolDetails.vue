@@ -322,27 +322,26 @@ onBeforeUnmount(async () => {
 
 <template>
   <PublicLayout>
-    <div class="rounded-2xl border border-slate-200 bg-white shadow-lg">
-      <div class="p-5 sm:p-7">
+    <section class="p-5 sm:p-7">
         <div class="flex items-center justify-between gap-3">
           <div>
-            <h2 class="text-2xl font-semibold text-slate-900">
+            <h2 class="text-2xl font-semibold text-white">
               {{ pool?.name || 'Pool' }}
             </h2>
-            <p class="mt-1 text-slate-600">
+            <p class="mt-1 text-white/80">
               Court: <span class="font-medium">{{ pool?.court_assignment || 'TBD' }}</span>
             </p>
           </div>
-          <div v-if="loading" class="text-sm text-slate-500">Loading…</div>
+          <div v-if="loading" class="text-sm text-white/80">Loading…</div>
         </div>
 
         <!-- Standings -->
         <div class="mt-6">
-          <h3 class="text-lg font-semibold text-slate-900">Standings</h3>
-          <div v-if="standings.length === 0" class="mt-2 text-sm text-slate-600">No results yet.</div>
+          <h3 class="text-lg font-semibold text-white">Standings</h3>
+          <div v-if="standings.length === 0" class="mt-2 text-sm text-white/80">No results yet.</div>
           <div v-else class="mt-3 overflow-x-auto">
             <table class="min-w-full border-separate border-spacing-y-2">
-              <thead class="text-left text-sm text-slate-600">
+              <thead class="text-left text-sm text-white/80">
                 <tr>
                   <th class="px-3 py-1">#</th>
                   <th class="px-3 py-1">Team</th>
@@ -355,16 +354,16 @@ onBeforeUnmount(async () => {
               </thead>
               <tbody>
                 <tr v-for="(s, i) in standings" :key="s.teamId" class="rounded-xl">
-                  <td class="px-3 py-2 text-slate-700">{{ i + 1 }}</td>
+                  <td class="px-3 py-2 text-white">{{ i + 1 }}</td>
                   <td class="px-3 py-2">
-                    <div class="font-medium text-slate-900">{{ s.name }}</div>
-                    <div v-if="s.seed != null" class="text-xs text-slate-500">Seed: {{ s.seed }}</div>
+                    <div class="font-medium text-white">{{ s.name }}</div>
+                    <div v-if="s.seed != null" class="text-xs text-white/70">Seed: {{ s.seed }}</div>
                   </td>
-                  <td class="px-3 py-2">{{ s.wins }}</td>
-                  <td class="px-3 py-2">{{ s.losses }}</td>
-                  <td class="px-3 py-2">{{ s.setWon }}-{{ s.setLost }}</td>
-                  <td class="px-3 py-2">{{ (s.setRatio * 100).toFixed(0) }}%</td>
-                  <td class="px-3 py-2">{{ s.pointDiff > 0 ? '+' + s.pointDiff : s.pointDiff }}</td>
+                  <td class="px-3 py-2 text-white">{{ s.wins }}</td>
+                  <td class="px-3 py-2 text-white">{{ s.losses }}</td>
+                  <td class="px-3 py-2 text-white">{{ s.setWon }}-{{ s.setLost }}</td>
+                  <td class="px-3 py-2 text-white">{{ (s.setRatio * 100).toFixed(0) }}%</td>
+                  <td class="px-3 py-2 text-white">{{ s.pointDiff > 0 ? '+' + s.pointDiff : s.pointDiff }}</td>
                 </tr>
               </tbody>
             </table>
@@ -373,41 +372,36 @@ onBeforeUnmount(async () => {
 
         <!-- Schedule -->
         <div class="mt-8">
-          <h3 class="text-lg font-semibold text-slate-900">Schedule</h3>
-          <div v-if="matches.length === 0" class="mt-2 text-sm text-slate-600">No matches scheduled.</div>
+          <h3 class="text-lg font-semibold text-white">Schedule</h3>
+          <div v-if="matches.length === 0" class="mt-2 text-sm text-white/80">No matches scheduled.</div>
           <ul v-else class="mt-3 grid gap-3">
             <li
               v-for="m in matches"
               :key="m.id"
-              class="cursor-pointer rounded-xl border border-slate-200 bg-white p-4 shadow-sm hover:shadow-md transition-shadow"
+              class="cursor-pointer rounded-xl bg-white/10 ring-1 ring-white/20 p-4 hover:bg-white/15 transition-colors text-white"
               @click="openMatch(m.id)"
             >
               <div class="flex items-center justify-between">
-                <div class="text-sm text-slate-600">
+                <div class="text-sm text-white/80">
                   Round {{ m.round_number ?? '—' }}
                 </div>
-                <div v-if="m.is_live" class="inline-flex items-center gap-2 rounded-full px-2.5 py-1 text-xs font-semibold uppercase tracking-wide text-white bg-red-600">
-                  <span class="size-2 rounded-full bg-white/90"></span>
-                  Live
-                </div>
               </div>
-              <div class="mt-1 font-semibold text-slate-900">
+              <div class="mt-1 font-semibold text-white">
                 {{ nameFor(m.team1_id) }} vs {{ nameFor(m.team2_id) }}
               </div>
-              <div class="mt-1 text-xs text-slate-500">
+              <div class="mt-1 text-xs text-white/70">
                 Ref: {{ nameFor(m.ref_team_id) }}
               </div>
             </li>
           </ul>
         </div>
 
-        <div class="mt-8 text-sm text-slate-600 text-center">
+        <div class="mt-8 text-sm text-white/80 text-center">
           Back to
-          <router-link class="text-gbv-blue underline" :to="{ name: 'public-pool-list', params: { accessCode } }">
+          <router-link class="underline" :to="{ name: 'public-pool-list', params: { accessCode } }">
             Pools
           </router-link>
         </div>
-      </div>
-    </div>
+    </section>
   </PublicLayout>
 </template>

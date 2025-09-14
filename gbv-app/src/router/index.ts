@@ -8,7 +8,7 @@ const routes: RouteRecordRaw[] = [
     path: '/:accessCode?',
     name: 'tournament-public',
     component: () => import('../pages/TournamentPublic.vue'),
-    meta: { fullScreen: true },
+    meta: { fullScreen: true, publicShell: true },
   },
 
   // New nested Pool Play routes
@@ -16,31 +16,31 @@ const routes: RouteRecordRaw[] = [
     path: '/:accessCode/pools',
     name: 'public-pool-list',
     component: () => import('../pages/PublicPoolList.vue'),
-    meta: { fullScreen: true },
+    meta: { fullScreen: true, publicShell: true },
   },
   {
     path: '/:accessCode/pools/:poolId',
     name: 'public-pool-details',
     component: () => import('../pages/PublicPoolDetails.vue'),
-    meta: { fullScreen: true },
+    meta: { fullScreen: true, publicShell: true },
   },
   {
     path: '/:accessCode/matches/:matchId',
     name: 'match-actions',
     component: () => import('../pages/MatchActions.vue'),
-    meta: { fullScreen: true },
+    meta: { fullScreen: true, publicShell: true },
   },
   {
     path: '/:accessCode/matches/:matchId/live',
     name: 'match-live',
     component: () => import('../pages/LiveScoreboardMatch.vue'),
-    meta: { fullScreen: true },
+    meta: { fullScreen: true, publicShell: true },
   },
   {
     path: '/:accessCode/matches/:matchId/score',
     name: 'match-score',
     component: () => import('../pages/ScoreEntryMatch.vue'),
-    meta: { fullScreen: true },
+    meta: { fullScreen: true, publicShell: true },
   },
 
   // Bracket landing (placeholder for now)
@@ -48,7 +48,7 @@ const routes: RouteRecordRaw[] = [
     path: '/:accessCode/bracket',
     name: 'public-bracket',
     component: () => import('../pages/PublicBracket.vue'),
-    meta: { fullScreen: true },
+    meta: { fullScreen: true, publicShell: true },
   },
 
   // Legacy public pages (kept for compatibility; may be removed later)
@@ -56,11 +56,13 @@ const routes: RouteRecordRaw[] = [
     path: '/:accessCode/score',
     name: 'score-entry',
     component: () => import('../pages/ScoreEntry.vue'),
+    meta: { fullScreen: true, publicShell: true },
   },
   {
     path: '/:accessCode/live',
     name: 'live-scoreboard',
     component: () => import('../pages/LiveScoreboard.vue'),
+    meta: { fullScreen: true, publicShell: true },
   },
 
   // Admin routes
@@ -129,6 +131,11 @@ const routes: RouteRecordRaw[] = [
 const router = createRouter({
   history: createWebHistory(),
   routes,
+  // Ensure page scroll resets to top on navigation (fixes "must scroll to see next page" after access code login)
+  scrollBehavior(_to, _from, savedPosition) {
+    if (savedPosition) return savedPosition;
+    return { left: 0, top: 0 };
+  },
 });
 
 // Admin auth guard (gracefully handles missing env/Supabase errors)

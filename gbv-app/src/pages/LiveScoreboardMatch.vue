@@ -5,6 +5,7 @@ import Button from 'primevue/button';
 import { useToast } from 'primevue/usetoast';
 import supabase from '../lib/supabase';
 import { useSessionStore } from '../stores/session';
+import PublicLayout from '../components/layout/PublicLayout.vue';
 
 type UUID = string;
 
@@ -39,6 +40,7 @@ const score2 = ref<number>(0);
 const isLive = ref<boolean>(false);
 const matchLabel = ref<string>('No match loaded');
 const canControl = ref<boolean>(false); // false when another user has live or claim failed
+const matchType = ref<'pool' | 'bracket' | null>(null);
 
 // team names cache
 const teamNameById = ref<Record<string, string>>({});
@@ -89,6 +91,7 @@ function setFromMatch(m: Match | null) {
   score1.value = Math.max(0, m.live_score_team1 ?? 0);
   score2.value = Math.max(0, m.live_score_team2 ?? 0);
   isLive.value = !!m.is_live;
+  matchType.value = m.match_type;
   const prefix = m.match_type === 'bracket' ? 'Bracket' : 'Pool';
   matchLabel.value = `${prefix}${m.round_number ? ` R${m.round_number}` : ''}: ${nameFor(m.team1_id)} vs ${nameFor(m.team2_id)}`;
 }
@@ -203,6 +206,80 @@ async function flipScores() {
   await applyScoreUpdate(ns1, ns2);
 }
 
+// Game rules and winner detection
+type RuleSet = { target: number; cap?: number | null; winBy2: boolean };
+
+function getActiveRuleSet(): RuleSet {
+  const gr = session.tournament?.game_rules;
+  const mt = matchType.value ?? 'pool';
+  const phase = mt === 'bracket' ? gr?.bracket : gr?.pool;
+  const target = phase?.setTarget ?? 21;
+  const cap = phase?.cap ?? 25;
+  const winBy2 = phase?.winBy2 ?? true;
+  return { target, cap, winBy2 };
+}
+
+const hasWinner = computed(() => {
+  const r = getActiveRuleSet();
+  const s1 = score1.value ?? 0;
+  const s2 = score2.value ?? 0;
+  const high = Math.max(s1, s2);
+  const lead = Math.abs(s1 - s2);
+  if (r.winBy2) {
+    if (r.cap != null && high >= r.cap) return true; // cap reached
+    return high >= r.target && lead >= 2;
+  }
+  return high >= r.target;
+});
+
+const winnerId = computed<UUID | null>(() => {
+  const s1 = score1.value ?? 0;
+  const s2 = score2.value ?? 0;
+  if (!team1Id.value || !team2Id.value) return null;
+  if (s1 === s2) return null;
+  return s1 > s2 ? team1Id.value : team2Id.value;
+});
+
+async function submitFinal() {
+  if (!canControl.value || !liveMatchId.value) return;
+  const winId = winnerId.value;
+  // Require a detected winner
+  if (!hasWinner.value || !winId) {
+    toast.add({ severity: 'warn', summary: 'Winner not clear', detail: 'Scores do not meet win conditions.', life: 2200 });
+    return;
+  }
+
+  const { error } = await supabase
+    .from('matches')
+    .update({
+      team1_score: score1.value ?? 0,
+      team2_score: score2.value ?? 0,
+      winner_id: winId,
+      is_live: false,
+      live_score_team1: null,
+      live_score_team2: null,
+    })
+    .eq('id', liveMatchId.value);
+
+  if (error) {
+    toast.add({ severity: 'error', summary: 'Submit failed', detail: error.message, life: 3000 });
+    return;
+  }
+
+  // If bracket match, mark bracket_started = true on first scoring activity
+  if (matchType.value === 'bracket' && session.tournament) {
+    await supabase
+      .from('tournaments')
+      .update({ bracket_started: true })
+      .eq('id', session.tournament.id)
+      .eq('bracket_started', false);
+  }
+
+  toast.add({ severity: 'success', summary: 'Final submitted', life: 1600 });
+  // Navigate back to match actions
+  router.push({ name: 'match-actions', params: { accessCode: accessCode.value, matchId: liveMatchId.value } });
+}
+
 // Realtime subscription for this match only
 let channel: ReturnType<typeof supabase.channel> | null = null;
 
@@ -263,11 +340,10 @@ onBeforeUnmount(async () => {
 </script>
 
 <template>
-  <section class="mx-auto max-w-4xl px-4 pb-10 pt-6">
-    <div class="rounded-2xl border border-slate-200 bg-white shadow-lg">
-      <div class="p-5 sm:p-7">
+  <PublicLayout>
+    <section class="p-5 sm:p-7">
         <div class="flex items-center justify-between">
-          <h2 class="text-2xl font-semibold text-slate-900">Live Scoreboard</h2>
+          <h2 class="text-2xl font-semibold text-white">Live Scoreboard</h2>
           <div
             v-if="isLive"
             class="inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-wide text-white"
@@ -279,23 +355,23 @@ onBeforeUnmount(async () => {
           </div>
         </div>
 
-        <p class="mt-1 text-slate-600">
+        <p class="mt-1 text-white/80">
           {{ matchLabel }}
         </p>
-        <p v-if="!canControl && isLive" class="mt-1 text-sm text-red-600">
+        <p v-if="!canControl && isLive" class="mt-1 text-sm text-red-200">
           Another device is live scoring this match. Controls are disabled.
         </p>
 
         <div class="mt-6 grid grid-cols-1 gap-6">
-          <div class="rounded-xl bg-gbv-bg p-6">
+          <div class="rounded-xl bg-white/10 ring-1 ring-white/20 p-6">
             <div class="grid grid-cols-2 items-center gap-6">
               <div class="text-center">
-                <div class="text-sm text-slate-600">Team 1</div>
-                <div class="text-3xl sm:text-4xl font-extrabold text-slate-900">{{ team1Id ? (team1Id && (team1Id in teamNameById) ? teamNameById[team1Id] : 'TBD') : 'TBD' }}</div>
+                <div class="text-sm text-white/80">Team 1</div>
+                <div class="text-3xl sm:text-4xl font-extrabold text-white">{{ team1Id ? (team1Id && (team1Id in teamNameById) ? teamNameById[team1Id] : 'TBD') : 'TBD' }}</div>
               </div>
               <div class="text-center">
-                <div class="text-sm text-slate-600">Team 2</div>
-                <div class="text-3xl sm:text-4xl font-extrabold text-slate-900">{{ team2Id ? (team2Id && (team2Id in teamNameById) ? teamNameById[team2Id] : 'TBD') : 'TBD' }}</div>
+                <div class="text-sm text-white/80">Team 2</div>
+                <div class="text-3xl sm:text-4xl font-extrabold text-white">{{ team2Id ? (team2Id && (team2Id in teamNameById) ? teamNameById[team2Id] : 'TBD') : 'TBD' }}</div>
               </div>
             </div>
 
@@ -356,7 +432,17 @@ onBeforeUnmount(async () => {
             </div>
           </div>
 
-          <div class="rounded-xl border border-dashed border-slate-300 p-6 text-center text-slate-600">
+          <div v-if="canControl && hasWinner" class="mt-4 flex justify-center">
+            <Button
+              label="Submit Final Score"
+              size="large"
+              icon="pi pi-check-circle"
+              class="!rounded-2xl !px-6 !py-4 !text-lg !font-semibold border-none text-white gbv-grad-blue"
+              @click="submitFinal"
+            />
+          </div>
+
+          <div class="rounded-xl border border-dashed border-white/30 p-6 text-center text-white/80">
             This view updates in real-time for this match.
           </div>
         </div>
@@ -365,17 +451,16 @@ onBeforeUnmount(async () => {
           <Button
             label="Back to Match"
             severity="secondary"
-            class="!rounded-2xl"
+            class="!rounded-2xl !text-white !bg-white/10 !ring-1 !ring-white/20 hover:!bg-white/15 border-none"
             @click="backToMatchActions"
           />
           <router-link
             :to="{ name: 'match-score', params: { accessCode: accessCode, matchId: matchId } }"
-            class="inline-flex items-center rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm hover:shadow"
+            class="inline-flex items-center rounded-2xl bg-white/10 ring-1 ring-white/20 px-4 py-2 text-sm hover:bg-white/15 text-white"
           >
             Enter Final Score
           </router-link>
         </div>
-      </div>
-    </div>
-  </section>
+      </section>
+  </PublicLayout>
 </template>

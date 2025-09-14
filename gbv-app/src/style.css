@@ -13,7 +13,7 @@
 
 /* Gradient helpers for modern material styling */
 .gbv-gradient-green {
-  background-image: linear-gradient(135deg, #58a73f 0%, #6cc451 70%);
+  background-image: linear-gradient(135deg, #468d31 0%, #51923d 70%);
 }
 
 .gbv-gradient-primary {
@@ -33,7 +33,7 @@ body {
 
 /* Mild same-color gradients */
 .gbv-grad-green {
-  background-image: linear-gradient(135deg, #5fb948 0%, #64b54b 100%);
+  background-image: linear-gradient(135deg, #499237 0%, #539a3e 100%);
 }
 
 .gbv-grad-dark-green {

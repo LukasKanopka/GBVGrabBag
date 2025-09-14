@@ -66,7 +66,7 @@ async function signIn(e: Event) {
                 v-model="email"
                 type="email"
                 placeholder="admin@example.com"
-                class="w-full !rounded-xl !px-4 !py-3 !text-base bg-white/95"
+                class="w-full !rounded-xl !px-4 !py-3 !text-base bg-white/95 text-gray-900"
                 required
               />
             </div>
@@ -78,7 +78,7 @@ async function signIn(e: Event) {
                 :feedback="false"
                 toggleMask
                 class="w-full"
-                inputClass="!rounded-xl !px-4 !py-3 !text-base bg-white/95"
+                inputClass="!rounded-xl !px-4 !py-3 !text-base bg-white/95 text-gray-900"
                 placeholder="••••••••"
                 required
               />

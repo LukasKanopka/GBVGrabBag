@@ -5,6 +5,7 @@ import Button from 'primevue/button';
 import { useToast } from 'primevue/usetoast';
 import supabase from '../lib/supabase';
 import { useSessionStore } from '../stores/session';
+import PublicLayout from '../components/layout/PublicLayout.vue';
 
 type UUID = string;
 
@@ -86,14 +87,6 @@ function nameFor(id: string | null) {
   return (id && teamNameById.value[id]) || 'TBD';
 }
 
-function goLive() {
-  if (!match.value) return;
-  if (match.value.is_live) {
-    toast.add({ severity: 'warn', summary: 'Match is live', detail: 'Live scoreboard already in use for this match.', life: 2000 });
-    return;
-  }
-  router.push({ name: 'match-live', params: { accessCode: accessCode.value, matchId: match.value.id } });
-}
 
 function goManual() {
   if (!match.value) return;
@@ -122,56 +115,37 @@ onMounted(async () => {
 </script>
 
 <template>
-  <section class="mx-auto max-w-3xl px-4 pb-10 pt-6">
-    <div class="rounded-2xl border border-slate-200 bg-white shadow-lg">
-      <div class="p-5 sm:p-7">
-        <div class="flex items-center justify-between">
-          <h2 class="text-2xl font-semibold text-slate-900">Match</h2>
-          <div v-if="loading" class="text-sm text-slate-500">Loading…</div>
-        </div>
-
-        <div v-if="match" class="mt-3">
-          <div class="flex items-center justify-between">
-            <div class="text-sm text-slate-600">
-              Round {{ match.round_number ?? '—' }} • {{ match.match_type === 'bracket' ? 'Bracket' : 'Pool' }}
-            </div>
-            <div
-              v-if="match.is_live"
-              class="inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-wide text-white bg-red-600"
-            >
-              <span class="size-2 rounded-full bg-white/90"></span>
-              Live
-            </div>
-          </div>
-          <div class="mt-2 text-xl font-semibold text-slate-900">
-            {{ nameFor(match.team1_id) }} vs {{ nameFor(match.team2_id) }}
-          </div>
-
-          <div class="mt-6 grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <Button
-              label="Live Score Recording with Scoreboard"
-              icon="pi pi-bolt"
-              class="!rounded-2xl !px-6 !py-4 !text-lg !font-semibold border-none text-white gbv-grad-orange"
-              :disabled="match.is_live"
-              @click="goLive"
-            />
-            <Button
-              label="Enter Score Manually"
-              icon="pi pi-pencil"
-              class="!rounded-2xl !px-6 !py-4 !text-lg !font-semibold border-none text-white gbv-grad-blue"
-              @click="goManual"
-            />
-          </div>
-
-          <div v-if="match.is_live" class="mt-3 text-sm text-slate-600">
-            Live scoreboard is active on another device. Manual score entry remains available.
-          </div>
-        </div>
-
-        <div class="mt-8 text-sm text-slate-600 text-center">
-          <button class="text-gbv-blue underline" @click="backToPool">Back to Pool</button>
-        </div>
+  <PublicLayout>
+    <section class="p-5 sm:p-7">
+      <div class="flex items-center justify-between">
+        <h2 class="text-2xl font-semibold text-white">Match</h2>
+        <div v-if="loading" class="text-sm text-white/80">Loading…</div>
       </div>
-    </div>
-  </section>
+
+      <div v-if="match" class="mt-3">
+        <div class="flex items-center justify-between">
+          <div class="text-sm text-white/80">
+            Round {{ match.round_number ?? '—' }} • {{ match.match_type === 'bracket' ? 'Bracket' : 'Pool' }}
+          </div>
+        </div>
+        <div class="mt-2 text-xl font-semibold text-white">
+          {{ nameFor(match.team1_id) }} vs {{ nameFor(match.team2_id) }}
+        </div>
+
+        <div class="mt-6 grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <Button
+            label="Enter Score Manually"
+            icon="pi pi-pencil"
+            class="!rounded-2xl !px-6 !py-4 !text-lg !font-semibold border-none text-white gbv-grad-blue"
+            @click="goManual"
+          />
+        </div>
+
+      </div>
+
+      <div class="mt-8 text-sm text-white/80 text-center">
+        <button class="underline text-white" @click="backToPool">Back to Pool</button>
+      </div>
+    </section>
+  </PublicLayout>
 </template>
