@@ -471,7 +471,6 @@ export async function generateBracket(tournamentId: string): Promise<{ inserted:
  * Deletes existing bracket matches then calls generateBracket.
  */
 export async function rebuildBracket(tournamentId: string): Promise<{ inserted: number; bracketSize: number; rounds: number; errors: string[] }> {
-  const errors: string[] = [];
 
   // Check tournament flags
   const { data: tData, error: tErr } = await supabase
