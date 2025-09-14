@@ -56,6 +56,23 @@ create index if not exists teams_tournament_idx on public.teams(tournament_id);
 create index if not exists teams_pool_idx on public.teams(pool_id);
 
 -- =========================
+-- Global tournament seed per player (seed_global)
+-- =========================
+alter table public.teams add column if not exists seed_global integer;
+
+-- Ensure positive seed or null
+alter table public.teams drop constraint if exists seed_global_positive;
+alter table public.teams add constraint seed_global_positive check (seed_global is null or seed_global >= 1);
+
+-- Unique per tournament when present
+create unique index if not exists teams_tournament_seed_global_uidx
+  on public.teams(tournament_id, seed_global)
+  where seed_global is not null;
+
+-- Helpful index for ordering by global seed
+create index if not exists teams_seed_global_idx on public.teams(seed_global);
+
+-- =========================
 -- matches
 -- =========================
 create table if not exists public.matches (

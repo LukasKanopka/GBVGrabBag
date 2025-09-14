@@ -5,6 +5,7 @@ import { useSessionStore } from '../stores/session';
 import InputText from 'primevue/inputtext';
 import Button from 'primevue/button';
 import { useToast } from 'primevue/usetoast';
+import PublicLayout from '../components/layout/PublicLayout.vue';
 
 
 const toast = useToast();
@@ -141,7 +142,7 @@ async function changeCode() {
   </section>
 
   <!-- Main Public Redirect Controller -->
-  <section v-else class="mx-auto max-w-3xl px-4 pb-10 pt-6">
+  <PublicLayout>
     <div class="rounded-2xl border border-slate-200 bg-white shadow-lg">
       <div class="p-5 sm:p-7">
         <div class="flex items-center justify-between gap-3">
@@ -194,5 +195,5 @@ async function changeCode() {
       Admin? Go to
       <router-link class="text-gbv-blue underline" :to="{ name: 'admin-login' }">Admin Login</router-link>
     </div>
-  </section>
+  </PublicLayout>
 </template>

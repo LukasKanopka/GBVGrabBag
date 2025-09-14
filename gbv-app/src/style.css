@@ -87,3 +87,59 @@ body {
   background-image: linear-gradient(135deg, #244695 0%, #2d51a6 100%);
 }
 
+
+/* Public UI tokens and utilities */
+:root {
+  --gbv-radius-card: 1rem; /* 16px rounded-2xl vibe */
+  --gbv-radius-pill: 999px;
+  --gbv-shadow-card: 0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -2px rgba(0,0,0,0.05);
+  --gbv-shadow-hover: 0 12px 20px -6px rgba(0,0,0,0.15), 0 6px 10px -4px rgba(0,0,0,0.08);
+  --gbv-focus-green: #1b6a08;
+}
+
+/* Card utility (opt-in; complements Tailwind classes used in pages) */
+.gbv-card {
+  border: 1px solid #e5e7eb;
+  background: #fff;
+  border-radius: var(--gbv-radius-card);
+  box-shadow: var(--gbv-shadow-card);
+}
+.gbv-card:hover { box-shadow: var(--gbv-shadow-hover); }
+
+/* Live/status badge */
+.gbv-badge-live {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.25rem 0.625rem;
+  border-radius: var(--gbv-radius-pill);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  color: #fff;
+  background: #dc2626; /* red-600 */
+}
+
+/* Focus ring for accessibility in bright environments */
+.focus-ring-green:focus-visible {
+  outline: 2px solid var(--gbv-focus-green);
+  outline-offset: 2px;
+}
+
+/* Subtle interaction feedback */
+.gbv-pressable {
+  transition: transform 120ms ease, box-shadow 120ms ease, background-color 120ms ease, color 120ms ease, opacity 120ms ease;
+}
+.gbv-pressable:active { transform: translateY(0.5px) scale(0.997); }
+
+/* Skeleton shimmer (for future loading states) */
+@keyframes gbv-shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+.gbv-skeleton {
+  border-radius: 0.75rem;
+  background: linear-gradient(90deg, #e5e7eb 25%, #f3f4f6 37%, #e5e7eb 63%);
+  background-size: 400% 100%;
+  animation: gbv-shimmer 1.4s ease infinite;
+}

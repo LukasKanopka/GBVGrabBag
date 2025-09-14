@@ -5,6 +5,7 @@ import { useSessionStore } from '../stores/session';
 import Button from 'primevue/button';
 import { useToast } from 'primevue/usetoast';
 import supabase from '../lib/supabase';
+import PublicLayout from '../components/layout/PublicLayout.vue';
 
 type Team = { id: string; full_team_name: string };
 type Match = {
@@ -209,7 +210,7 @@ onBeforeUnmount(async () => {
 </script>
 
 <template>
-  <section class="mx-auto max-w-4xl px-4 pb-10 pt-6">
+  <PublicLayout>
     <div class="rounded-2xl border border-slate-200 bg-white shadow-lg">
       <div class="p-5 sm:p-7">
         <div class="flex items-center justify-between">
@@ -307,5 +308,5 @@ onBeforeUnmount(async () => {
         </div>
       </div>
     </div>
-  </section>
+  </PublicLayout>
 </template>

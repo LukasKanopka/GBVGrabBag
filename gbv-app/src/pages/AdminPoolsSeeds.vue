@@ -22,6 +22,7 @@ type Team = {
   seeded_player_name: string;
   pool_id: string | null;
   seed_in_pool: number | null;
+  seed_global: number | null;
 };
 
 const router = useRouter();
@@ -31,6 +32,7 @@ const session = useSessionStore();
 const accessCode = ref<string>(session.accessCode ?? '');
 const loading = ref(false);
 const saving = ref(false);
+const generating = ref(false);
 
 // Data
 const pools = ref<Pool[]>([]);
@@ -153,7 +155,7 @@ async function loadTeams() {
   if (!session.tournament) return;
   const { data, error } = await supabase
     .from('teams')
-    .select('id,seeded_player_name,pool_id,seed_in_pool')
+    .select('id,seeded_player_name,pool_id,seed_in_pool,seed_global')
     .eq('tournament_id', session.tournament.id);
   if (error) {
     toast.add({ severity: 'error', summary: 'Failed to load teams', detail: error.message, life: 2500 });
@@ -319,6 +321,207 @@ async function setSeed(teamId: string, seedStr: string) {
     toast.add({ severity: 'error', summary: 'Update seed failed', detail: err?.message ?? 'Unknown error', life: 3000 });
   }
 }
+/**
+ * Autogenerate Pools
+ * - Prefer pools of 5; sizes must be a combination of 4 and 5 exactly.
+ * - Pools named 'Pool {number}', court set to '{number}'.
+ * - Teams assigned snake-wise by seed_global (nulls last by name).
+ * - Existing pools and pool-play matches will be deleted after confirmation.
+ */
+async function autogeneratePools() {
+  if (!session.tournament) return;
+  const tournamentId = session.tournament.id;
+
+  generating.value = true;
+  try {
+    // Freshly load players ordered by global seed (nulls last, then name)
+    const { data: teamRows, error: teamErr } = await supabase
+      .from('teams')
+      .select('id,seeded_player_name,seed_in_pool,pool_id,seed_global')
+      .eq('tournament_id', tournamentId)
+      .order('seed_global', { ascending: true })
+      .order('seeded_player_name', { ascending: true });
+
+    if (teamErr) throw new Error(`Load teams failed: ${teamErr.message}`);
+
+    const ordered: Team[] = (teamRows as any[]).sort((a, b) => {
+      const ag = a.seed_global;
+      const bg = b.seed_global;
+      if (ag == null && bg == null) return a.seeded_player_name.localeCompare(b.seeded_player_name);
+      if (ag == null) return 1;  // nulls last
+      if (bg == null) return -1;
+      return ag - bg;
+    });
+
+    const N = ordered.length;
+    if (N === 0) {
+      toast.add({ severity: 'warn', summary: 'No players', detail: 'Import players first.', life: 2500 });
+      return;
+    }
+
+    // Compute pool sizes (prefer 5, allow 4). Block on impossible counts like 6,7,11.
+    const sizes = computePoolSizes(N);
+    if (!sizes) {
+      toast.add({ severity: 'error', summary: 'Cannot partition', detail: `Player count ${N} cannot be partitioned into pools of 4 or 5. Adjust players.`, life: 4000 });
+      return;
+    }
+
+    // Confirm destructive changes if pools or pool matches exist
+    const existingPools = pools.value.length > 0;
+    const anyAssigned = teams.value.some(t => t.pool_id);
+    const poolMatches = await hasExistingPoolMatches(tournamentId);
+
+    if (existingPools || anyAssigned || poolMatches) {
+      const ok = confirm('Autogenerate will delete all existing pools and all pool-play matches, then recreate pools and assignments. Continue?');
+      if (!ok) return;
+
+      // Delete matches (pool)
+      if (poolMatches) {
+        const { error: delMErr } = await supabase
+          .from('matches')
+          .delete()
+          .eq('tournament_id', tournamentId)
+          .eq('match_type', 'pool');
+        if (delMErr) throw new Error(`Failed to delete pool matches: ${delMErr.message}`);
+      }
+
+      // Delete pools (teams will be unassigned via ON DELETE SET NULL)
+      if (existingPools) {
+        const { error: delPErr } = await supabase
+          .from('pools')
+          .delete()
+          .eq('tournament_id', tournamentId);
+        if (delPErr) throw new Error(`Failed to delete pools: ${delPErr.message}`);
+      }
+
+      // Ensure seed_in_pool reset (clean slate)
+      const { error: clrErr } = await supabase
+        .from('teams')
+        .update({ seed_in_pool: null, pool_id: null })
+        .eq('tournament_id', tournamentId);
+      if (clrErr) throw new Error(`Failed to reset team assignments: ${clrErr.message}`);
+
+      // Refresh local caches
+      await Promise.all([loadPools(), loadTeams()]);
+    }
+
+    // Create new pools
+    const targetPayload = sizes.map((sz, i) => ({
+      tournament_id: tournamentId,
+      name: `Pool ${i + 1}`,
+      court_assignment: String(i + 1),
+      target_size: sz,
+    }));
+
+    const { data: createdPools, error: insPErr } = await supabase
+      .from('pools')
+      .insert(targetPayload)
+      .select('id,name,target_size,court_assignment');
+
+    if (insPErr) throw new Error(`Failed to create pools: ${insPErr.message}`);
+
+    // Ensure same order as sizes (Pool 1..Pool P)
+    const createdOrdered = (createdPools as any[]).slice().sort((a, b) => {
+      const ai = Number(String(a.name).replace(/[^0-9]/g, '') || '0');
+      const bi = Number(String(b.name).replace(/[^0-9]/g, '') || '0');
+      return ai - bi;
+    });
+
+    // Snake distribution respecting capacities
+    const poolCap = createdOrdered.map(p => Number(p.target_size) || 0);
+    const poolAssigned: number[] = createdOrdered.map(() => 0);
+    let dir: 1 | -1 = 1;
+    let idx = 0;
+    const P = createdOrdered.length;
+
+    // Helper to advance idx in snake pattern
+    function advance() {
+      if (P === 1) return;
+      if (dir === 1) {
+        if (idx >= P - 1) { dir = -1; idx = P - 2; }
+        else idx += 1;
+      } else {
+        if (idx <= 0) { dir = 1; idx = 1; }
+        else idx -= 1;
+      }
+    }
+
+    // Assignments to perform (per-team update)
+    type Assign = { id: string; pool_id: string; seed_in_pool: number };
+    const assigns: Assign[] = [];
+
+    for (const t of ordered) {
+      // Find next available pool slot following snake, skipping full pools
+      let attempts = 0;
+      while (attempts < P * 2 && poolAssigned[idx] >= poolCap[idx]) {
+        advance();
+        attempts++;
+      }
+      if (poolAssigned[idx] >= poolCap[idx]) {
+        // fallback linear scan
+        let found = -1;
+        for (let j = 0; j < P; j++) {
+          if (poolAssigned[j] < poolCap[j]) { found = j; break; }
+        }
+        if (found === -1) {
+          throw new Error('Internal: capacity overflow while assigning teams.');
+        }
+        idx = found;
+      }
+
+      const pool = createdOrdered[idx];
+      const seedInPool = poolAssigned[idx] + 1;
+      assigns.push({ id: t.id, pool_id: pool.id, seed_in_pool: seedInPool });
+      poolAssigned[idx] += 1;
+
+      // move to next slot in snake
+      advance();
+    }
+
+    // Persist assignments (per-row updates)
+    for (const a of assigns) {
+      const { error: upErr } = await supabase
+        .from('teams')
+        .update({ pool_id: a.pool_id, seed_in_pool: a.seed_in_pool })
+        .eq('id', a.id);
+      if (upErr) throw new Error(`Failed to assign team: ${upErr.message}`);
+    }
+
+    await Promise.all([loadPools(), loadTeams()]);
+    toast.add({ severity: 'success', summary: `Created ${createdOrdered.length} pool(s) and assigned ${assigns.length} team(s)`, life: 2500 });
+  } catch (err: any) {
+    toast.add({ severity: 'error', summary: 'Autogenerate failed', detail: err?.message ?? 'Unknown error', life: 4000 });
+  } finally {
+    generating.value = false;
+  }
+}
+
+// Return array of pool sizes (5s then 4s) or null if impossible
+function computePoolSizes(n: number): number[] | null {
+  // Try max number of 5s, reduce until remainder divisible by 4
+  for (let fives = Math.floor(n / 5); fives >= 0; fives--) {
+    const rem = n - fives * 5;
+    if (rem === 0) {
+      return Array(fives).fill(5);
+    }
+    if (rem > 0 && rem % 4 === 0) {
+      const fours = rem / 4;
+      return Array(fives).fill(5).concat(Array(fours).fill(4));
+    }
+  }
+  return null;
+}
+
+async function hasExistingPoolMatches(tournamentId: string): Promise<boolean> {
+  const { data, error } = await supabase
+    .from('matches')
+    .select('id', { head: false, count: 'exact' })
+    .eq('tournament_id', tournamentId)
+    .eq('match_type', 'pool')
+    .limit(1);
+  if (error) return false;
+  return Array.isArray(data) && data.length > 0;
+}
 </script>
 
 <template>
@@ -365,6 +568,25 @@ async function setSeed(teamId: string, seedStr: string) {
         Loaded:
         <span class="font-semibold">{{ session.tournament.name }}</span>
         <span class="ml-2 text-white/80">({{ session.accessCode }})</span>
+      </div>
+    </div>
+
+    <!-- Autogenerate Pools -->
+    <div v-if="session.tournament" class="mt-4 rounded-lg border border-white/15 bg-white/5 p-4">
+      <div class="flex items-center justify-between">
+        <div class="text-sm">
+          <div class="font-semibold">Autogenerate Pools</div>
+          <div class="mt-1 text-white/80">
+            Creates pools of size 4 or 5 (prefers 5) from global seeds, assigns courts, and seeds within pools using snake distribution.
+          </div>
+        </div>
+        <Button
+          :loading="generating"
+          label="Autogenerate"
+          icon="pi pi-cog"
+          class="!rounded-xl border-none text-white gbv-grad-green"
+          @click="autogeneratePools"
+        />
       </div>
     </div>
 

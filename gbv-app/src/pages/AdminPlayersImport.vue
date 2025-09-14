@@ -214,13 +214,32 @@ async function insertNewPlayers() {
     return;
   }
 
-  const rows = newOnes.map((name) => ({
+  // Determine starting global seed (1-based, continuous per tournament)
+  let startSeed = 0;
+  try {
+    const { data: maxSeedRows } = await supabase
+      .from('teams')
+      .select('seed_global')
+      .eq('tournament_id', session.tournament!.id)
+      .not('seed_global', 'is', null)
+      .order('seed_global', { ascending: false })
+      .limit(1);
+    if (Array.isArray(maxSeedRows) && maxSeedRows.length > 0 && typeof (maxSeedRows[0] as any).seed_global === 'number') {
+      startSeed = (maxSeedRows[0] as any).seed_global as number;
+    }
+  } catch {
+    // fallback to 0; unique constraint will guard conflicts if any race occurs
+    startSeed = 0;
+  }
+
+  const rows = newOnes.map((name, idx) => ({
     tournament_id: session.tournament!.id,
     pool_id: null,
     seeded_player_name: name,
     partner_name: null,
     full_team_name: name, // initial full name equals seeded name
     seed_in_pool: null,
+    seed_global: startSeed + idx + 1,
   }));
 
   loading.value = true;
