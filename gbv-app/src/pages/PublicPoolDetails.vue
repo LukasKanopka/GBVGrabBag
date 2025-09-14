@@ -141,7 +141,23 @@ async function loadMatches() {
     matches.value = [];
     return;
   }
-  matches.value = (data as Match[]) ?? [];
+
+  // Deduplicate any accidental duplicate rows returned or present in DB.
+  // Key on pool_id + round_number + team1_id + team2_id + ref_team_id to ensure uniqueness per pool/round/matchup.
+  const raw = (data as Match[]) ?? [];
+  const seen = new Set<string>();
+  matches.value = raw.filter((m) => {
+    const k = [
+      m.pool_id ?? 'null',
+      m.round_number ?? 'null',
+      m.team1_id ?? 'null',
+      m.team2_id ?? 'null',
+      m.ref_team_id ?? 'null',
+    ].join('|');
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
 }
 
 function computeStandings() {

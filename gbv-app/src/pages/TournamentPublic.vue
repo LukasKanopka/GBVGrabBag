@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue';
+import { onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useSessionStore } from '../stores/session';
 import InputText from 'primevue/inputtext';
@@ -27,24 +27,39 @@ function resetScrollFocus() {
   }
 }
 
+/**
+ * Force navigation to the tournament destination and hard-refresh to land cleanly at the top.
+ * Falls back to Pools for unknown/draft/setup statuses.
+ */
+function navigateToTournament(code: string, status: string | undefined) {
+  const name = status === 'bracket' ? 'public-bracket' : 'public-pool-list';
+  const target = { name, params: { accessCode: code } as Record<string, any> };
+
+  // Try SPA navigation first (non-blocking)
+  router.replace(target).catch(() => { /* ignore redundant or async race */ });
+
+  // Always perform a hard navigation to ensure we land cleanly without needing to scroll
+  const resolved = router.resolve(target);
+  if (typeof window !== 'undefined') {
+    window.location.assign(resolved.href);
+  }
+}
+
 async function refreshTournament(code: string) {
   loading.value = true;
   try {
     await session.ensureAnon();
     const t = await session.loadTournamentByCode(code);
     if (!t) {
+      console.debug('[TournamentPublic] refreshTournament - not found', { code });
       session.clearAccessCode();
       toast.add({ severity: 'error', summary: 'Tournament does not exist', detail: '', life: 3000 });
       router.replace({ name: 'tournament-public' });
       return;
     }
 
-    // Redirect based on tournament status to nested flow
-    if (t.status === 'pool_play') {
-      router.replace({ name: 'public-pool-list', params: { accessCode: code } });
-    } else if (t.status === 'bracket') {
-      router.replace({ name: 'public-bracket', params: { accessCode: code } });
-    }
+    console.debug('[TournamentPublic] refreshTournament -> navigate', { code, status: t.status });
+    navigateToTournament(code, t.status);
   } finally {
     loading.value = false;
   }
@@ -67,6 +82,14 @@ onMounted(async () => {
   }
 });
 
+// React when the URL param accessCode changes (e.g., after saving code and canonicalizing URL)
+watch(() => route.params.accessCode as string | undefined, async (newCode, oldCode) => {
+  if (!newCode || newCode === oldCode) return;
+  accessCodeParam.value = newCode;
+  session.setAccessCode(newCode);
+  await refreshTournament(newCode);
+});
+
 async function saveCode() {
   if (!accessCodeInput.value.trim()) return;
   const code = accessCodeInput.value.trim();
@@ -76,18 +99,14 @@ async function saveCode() {
     await session.ensureAnon();
     const t = await session.loadTournamentByCode(code);
     if (!t) {
+      console.debug('[TournamentPublic] saveCode - tournament not found', { code });
       toast.add({ severity: 'error', summary: 'Tournament does not exist', life: 3000 });
       return;
     }
     session.setAccessCode(code);
     toast.add({ severity: 'success', summary: 'Code Saved', detail: code, life: 2000 });
-    if (t.status === 'pool_play') {
-      await router.replace({ name: 'public-pool-list', params: { accessCode: code } });
-    } else if (t.status === 'bracket') {
-      await router.replace({ name: 'public-bracket', params: { accessCode: code } });
-    } else {
-      await router.replace({ name: 'tournament-public', params: { accessCode: code } });
-    }
+    console.debug('[TournamentPublic] saveCode -> navigate', { code, status: t.status });
+    navigateToTournament(code, t.status);
   } finally {
     loading.value = false;
   }
@@ -148,7 +167,7 @@ async function saveCode() {
   </section>
 
   <!-- Main Public Redirect Controller -->
-  <PublicLayout>
+  <PublicLayout v-else>
     <section class="p-5 sm:p-7">
       <div class="flex items-center justify-between gap-3">
         <div>
