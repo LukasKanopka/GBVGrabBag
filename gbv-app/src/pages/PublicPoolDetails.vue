@@ -414,7 +414,7 @@ onBeforeUnmount(async () => {
                 </div>
                 <span
                   v-if="m.team1_score != null && m.team2_score != null"
-                  class="ml-3 inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-white/10 ring-1 ring-white/20 text-white/90"
+                  class="ml-3 inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-white/10 ring-1 ring-white/20 text-white/90 whitespace-nowrap"
                 >
                   {{ completedLabel(m) }}
                 </span>

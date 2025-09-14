@@ -10,7 +10,7 @@ import ToggleButton from 'primevue/togglebutton';
 import UiSectionHeading from '@/components/ui/UiSectionHeading.vue';
 import supabase from '../lib/supabase';
 import { useSessionStore } from '../stores/session';
-import { generateBracket, rebuildBracket } from '../lib/bracket';
+import { generateBracket, rebuildBracket, checkBracketPrerequisites, type BracketPrereqReport } from '../lib/bracket';
 import { fillRandomPoolScores } from '../lib/testData';
 
 type UUID = string;
@@ -37,6 +37,11 @@ const accessCode = ref<string>(session.accessCode ?? '');
 const loading = ref(false);
 const running = ref(false);
 const manualMode = ref(false);
+
+const prereqRunning = ref(false);
+const prereqReport = ref<BracketPrereqReport | null>(null);
+const lastErrors = ref<string[]>([]);
+const lastOp = ref<'generate' | 'rebuild' | 'prereq' | null>(null);
 
 const matches = ref<Match[]>([]);
 const teams = ref<Team[]>([]);
@@ -130,10 +135,15 @@ async function doGenerate() {
   running.value = true;
   try {
     const res = await generateBracket(session.tournament.id);
-    if ((res.errors ?? []).length === 0) {
-      toast.add({ severity: 'success', summary: `Generated ${res.inserted} match(es)`, life: 2000 });
+    lastOp.value = 'generate';
+    const errs = res.errors || [];
+    lastErrors.value = errs;
+    const suffix = res.bracketSize ? ` • size ${res.bracketSize}, ${res.rounds} round(s)` : '';
+    if (errs.length === 0) {
+      toast.add({ severity: 'success', summary: `Generated ${res.inserted} match(es)${suffix}`, life: 2500 });
     } else {
-      toast.add({ severity: 'warn', summary: `Generated ${res.inserted}, with ${res.errors.length} error(s)`, life: 3500 });
+      toast.add({ severity: 'warn', summary: `Generated ${res.inserted} with ${errs.length} error(s): ${errs[0]}`, life: 4000 });
+      console.warn('generateBracket errors:', errs);
     }
     await loadMatches();
   } catch (err: any) {
@@ -153,16 +163,56 @@ async function doRebuild() {
   running.value = true;
   try {
     const res = await rebuildBracket(session.tournament.id);
-    if ((res.errors ?? []).length === 0) {
-      toast.add({ severity: 'success', summary: `Rebuilt with ${res.inserted} match(es)`, life: 2000 });
+    lastOp.value = 'rebuild';
+    const errs = res.errors || [];
+    lastErrors.value = errs;
+    const suffix = res.bracketSize ? ` • size ${res.bracketSize}, ${res.rounds} round(s)` : '';
+    if (errs.length === 0) {
+      toast.add({ severity: 'success', summary: `Rebuilt with ${res.inserted} match(es)${suffix}`, life: 2500 });
     } else {
-      toast.add({ severity: 'warn', summary: `Rebuilt with ${res.inserted}, ${res.errors.length} error(s)`, life: 3500 });
+      toast.add({ severity: 'warn', summary: `Rebuilt with ${res.inserted} and ${errs.length} error(s): ${errs[0]}`, life: 4000 });
+      console.warn('rebuildBracket errors:', errs);
     }
     await loadMatches();
   } catch (err: any) {
     toast.add({ severity: 'error', summary: 'Rebuild failed', detail: err?.message ?? 'Unknown error', life: 3000 });
   } finally {
     running.value = false;
+  }
+}
+
+async function doCheckPrereq() {
+  if (!session.tournament) {
+    toast.add({ severity: 'warn', summary: 'Load a tournament first', life: 1500 });
+    return;
+  }
+  prereqRunning.value = true;
+  try {
+    const report = await checkBracketPrerequisites(session.tournament.id);
+    prereqReport.value = report;
+    lastOp.value = 'prereq';
+    const ecount = report.errors.length;
+    if (report.ok) {
+      const sizeInfo = report.stats.bracketSize > 0 ? ` • size ${report.stats.bracketSize}, ${report.stats.rounds} round(s)` : '';
+      toast.add({
+        severity: 'success',
+        summary: `Ready: ${report.stats.poolCount} pool(s), ${report.stats.teamCount} team(s)`,
+        detail: `Advancers expected ${report.stats.expectedAdvancers}, actual ${report.stats.actualAdvancers || '—'}${sizeInfo}`,
+        life: 3500
+      });
+    } else {
+      toast.add({
+        severity: 'warn',
+        summary: `Prerequisites found ${ecount} blocker(s)`,
+        detail: report.errors[0],
+        life: 4500
+      });
+    }
+    console.log('Bracket prerequisites report:', report);
+  } catch (err: any) {
+    toast.add({ severity: 'error', summary: 'Prereq check failed', detail: err?.message ?? 'Unknown error', life: 3000 });
+  } finally {
+    prereqRunning.value = false;
   }
 }
 
@@ -278,6 +328,13 @@ onMounted(async () => {
           </div>
           <div class="mt-3 grid gap-3">
             <Button
+              :loading="prereqRunning"
+              label="Check Bracket Prerequisites"
+              icon="pi pi-check-circle"
+              class="!rounded-xl border-none text-white gbv-grad-blue"
+              @click="doCheckPrereq"
+            />
+            <Button
               :loading="running"
               label="Generate Bracket"
               icon="pi pi-sitemap"
@@ -305,13 +362,71 @@ onMounted(async () => {
             </div>
           </div>
           <div class="mt-4 text-xs text-white/80">
-            Status: 
+            Status:
             <Tag
               :value="session.tournament.bracket_started ? 'Started' : 'Not Started'"
               :severity="session.tournament.bracket_started ? 'warn' : 'info'"
             />
             <div class="mt-1">
               Generated at: {{ session.tournament.bracket_generated_at || '—' }}
+            </div>
+          </div>
+
+          <!-- Diagnostics Panel -->
+          <div class="mt-4 text-xs text-white/80 rounded-lg border border-white/15 bg-white/5 p-3">
+            <div class="flex items-center justify-between">
+              <div class="text-sm font-medium">Diagnostics</div>
+              <Tag
+                v-if="prereqReport"
+                :value="prereqReport.ok ? 'Ready' : 'Blocked'"
+                :severity="prereqReport.ok ? 'success' : 'warn'"
+              />
+            </div>
+
+            <div v-if="prereqReport" class="mt-2 space-y-2">
+              <div>
+                Pools: {{ prereqReport.stats.poolCount }},
+                Teams: {{ prereqReport.stats.teamCount }}
+                • Expected advancers: {{ prereqReport.stats.expectedAdvancers }},
+                Actual: {{ prereqReport.stats.actualAdvancers || '—' }}
+                <span v-if="prereqReport.stats.bracketSize > 0">
+                  • Size {{ prereqReport.stats.bracketSize }}, Rounds {{ prereqReport.stats.rounds }}
+                </span>
+              </div>
+
+              <div v-if="prereqReport.errors.length">
+                <div class="mb-1 font-medium text-white">Errors</div>
+                <ul class="list-disc list-inside">
+                  <li v-for="(e, i) in prereqReport.errors" :key="'pe'+i">{{ e }}</li>
+                </ul>
+              </div>
+
+              <div v-if="prereqReport.unscored.length">
+                <div class="mb-1 font-medium text-white">Unscored pool matches</div>
+                <ul class="list-disc list-inside max-h-40 overflow-auto pr-2">
+                  <li v-for="u in prereqReport.unscored" :key="'u'+u.matchId">
+                    {{ (u.poolName || 'Unknown Pool') }} • {{ u.matchId.slice(0, 8) }}
+                  </li>
+                </ul>
+              </div>
+
+              <div v-if="prereqReport.infos.length">
+                <div class="mb-1 font-medium text-white">Info</div>
+                <ul class="list-disc list-inside">
+                  <li v-for="(e, i) in prereqReport.infos" :key="'pi'+i">{{ e }}</li>
+                </ul>
+              </div>
+            </div>
+
+            <div v-else class="mt-2 text-white/70">
+              Run "Check Bracket Prerequisites" to analyze readiness.
+            </div>
+
+            <div v-if="lastErrors.length && (lastOp === 'generate' || lastOp === 'rebuild')" class="mt-3">
+              <div class="mb-1 font-medium text-white">Last {{ lastOp }} errors</div>
+              <ul class="list-disc list-inside">
+                <li v-for="(e, i) in lastErrors" :key="'le'+i">{{ e }}</li>
+              </ul>
             </div>
           </div>
         </div>
