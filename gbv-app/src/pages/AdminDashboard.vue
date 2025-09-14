@@ -58,11 +58,10 @@ const navItems: NavItem[] = [
     icon: 'pi-cog',
   },
   {
-    to: null,
-    title: 'Bracket (Coming Soon)',
+    to: { name: 'admin-bracket' },
+    title: 'Bracket',
     desc: 'Generate or manage playoff bracket.',
     icon: 'pi-sitemap',
-    disabled: true,
   },
 ];
 

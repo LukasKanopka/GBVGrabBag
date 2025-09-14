@@ -112,6 +112,12 @@ const routes: RouteRecordRaw[] = [
     component: () => import('../pages/AdminPartnerAssignment.vue'),
     meta: { requiresAdmin: true, blueLayout: true },
   },
+  {
+    path: '/admin/bracket',
+    name: 'admin-bracket',
+    component: () => import('../pages/AdminBracket.vue'),
+    meta: { requiresAdmin: true, blueLayout: true },
+  },
 
   // Fallback
   {

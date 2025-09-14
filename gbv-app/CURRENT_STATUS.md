@@ -7,7 +7,7 @@ Source of truth: Product Requirements at [PRD.md](PRD.md)
 ### Completed
 - Database schema foundations including tournaments, pools, teams, matches, schedule_templates in [supabase/schema.sql](supabase/schema.sql)
 - Schedule template management UI in [src/pages/AdminScheduleTemplates.vue](src/pages/AdminScheduleTemplates.vue)
-- Pool schedule generation and prerequisites checks implemented in [checkPrerequisites()](src/lib/schedule.ts:36) and [generateSchedule()](src/lib/schedule.ts:76)
+- Pool schedule generation and prerequisites checks implemented in [checkPrerequisites()](src/lib/schedule.ts:37) and [generateSchedule()](src/lib/schedule.ts:104)
 - Public tournament hub in [src/pages/TournamentPublic.vue](src/pages/TournamentPublic.vue)
 - Live scoreboard with realtime updates in [src/pages/LiveScoreboard.vue](src/pages/LiveScoreboard.vue)
 - Score entry for completed matches in [src/pages/ScoreEntry.vue](src/pages/ScoreEntry.vue)
@@ -18,16 +18,20 @@ Source of truth: Product Requirements at [PRD.md](PRD.md)
 - Pools & Seeds UI implemented and linked via [src/pages/AdminPoolsSeeds.vue](src/pages/AdminPoolsSeeds.vue) and routed in [src/router/index.ts](src/router/index.ts)
 - Partner Assignment implemented and linked via [src/pages/AdminPartnerAssignment.vue](src/pages/AdminPartnerAssignment.vue) and routed in [src/router/index.ts](src/router/index.ts)
 - Generate Schedule UI implemented and linked via [src/pages/AdminGenerateSchedule.vue](src/pages/AdminGenerateSchedule.vue) and routed in [src/router/index.ts](src/router/index.ts)
+- Public Pools: Matches list and Standings with tiebreakers implemented in [src/pages/PublicPoolList.vue](src/pages/PublicPoolList.vue), [src/pages/PublicPoolDetails.vue](src/pages/PublicPoolDetails.vue), and [src/pages/MatchActions.vue](src/pages/MatchActions.vue)
+- Bracket Engine (Policy A: top-2 advance per pool, byes to top seeds, bracket size 2/4/8) implemented in [computePoolStandings()](src/lib/bracket.ts:73), [seedAdvancers()](src/lib/bracket.ts:232), [generateBracket()](src/lib/bracket.ts:315), [rebuildBracket()](src/lib/bracket.ts:473)
+- Public Bracket view implemented in [src/pages/PublicBracket.vue](src/pages/PublicBracket.vue)
+- Admin Bracket UI with Generate/Rebuild/Manual Mode implemented in [src/pages/AdminBracket.vue](src/pages/AdminBracket.vue) and routed in [src/router/index.ts](src/router/index.ts)
+- Bracket lifecycle: bracket_started flips on first bracket activity (live or scored) via [LiveScoreboardMatch.vue](src/pages/LiveScoreboardMatch.vue:144) and [ScoreEntryMatch.vue](src/pages/ScoreEntryMatch.vue:120)
 
 ### In Progress
 - Planning and tracking document (this file)
 
 ### Pending (MVP-critical)
-- Public Pools pages for Matches and Standings with tiebreakers
-- Bracket Engine (auto seed, single_elimination and best_of_3_single_elim finals) and Admin Bracket UI
 - Dashboard status badges and checks
 - Documentation updates and sample CSV
 - Optional unit tests for generation and seeding
+- Optional: Finals best-of-3 series support (best_of_3_single_elim)
 
 ## MVP Decisions and Assumptions
 - Players CSV: single column with header seeded_player_name, UTF-8
@@ -79,11 +83,11 @@ Source of truth: Product Requirements at [PRD.md](PRD.md)
 ### Phase D — Bracket Play
 7. Bracket Engine (src/lib/bracket.ts)
    - computePoolStandings(tournamentId)
-   - seedAdvancers(advancementRules, standings) for pool sizes 4, 5
-   - generateBracket(tournamentId): create matches with match_type bracket, bracket_round; set tournaments.bracket_started true and bracket_generated_at, status bracket
-   - rebuildBracket(tournamentId): allowed only when bracket_started false; else block with message
-   - Support final series best_of_3 by creating multiple final matches and resolving series winner
-   - Acceptance: Correct number of bracket matches; seeding correct; guard enforced
+   - seedAdvancers(advancementRules, standings) for pool sizes 4, 5; global rank winners then runners-up; total advancers N=2×pools; choose bracket size B in {2,4,8} = next power of two; award byes to top seeds
+   - generateBracket(tournamentId): create matches with match_type=bracket, bracket_round; set tournaments.status='bracket' and bracket_generated_at; keep bracket_started=false until a bracket match goes live or is scored
+   - rebuildBracket(tournamentId): allowed only when bracket_started=false; else block with message
+   - Support final series best_of_3 by creating multiple final matches and resolving series winner (optional, future)
+   - Acceptance: Correct number of bracket matches; seeding correct with byes; guard enforced on rebuild
 
 8. Admin Bracket (AdminBracket.vue)
    - Generate, Rebuild, Manual Mode toggle
@@ -138,8 +142,8 @@ Source of truth: Product Requirements at [PRD.md](PRD.md)
 - [x] AdminPoolsSeeds.vue implemented and linked
 - [x] AdminPartnerAssignment.vue implemented and linked
 - [x] Generate Schedule UI wired and guarded
-- [ ] Public Pools: Matches list and Standings ready
-- [ ] Bracket engine implemented with AdminBracket.vue
+- [x] Public Pools: Matches list and Standings ready
+- [x] Bracket engine implemented with AdminBracket.vue
 - [ ] Dashboard badges reflect status
 - [ ] README updated with CSV sample and setup
 

@@ -108,6 +108,16 @@ async function loadMatch() {
   setFromMatch(data as Match);
 }
 
+async function ensureBracketStartedIfBracket(m: Match) {
+  if (m.match_type === 'bracket' && session.tournament) {
+    await supabase
+      .from('tournaments')
+      .update({ bracket_started: true })
+      .eq('id', session.tournament.id)
+      .eq('bracket_started', false);
+  }
+}
+
 async function claimLiveIfPossible() {
   if (!session.tournament || !matchId.value) return;
   // If already live, cannot control
@@ -144,6 +154,7 @@ async function claimLiveIfPossible() {
   // Claimed successfully
   canControl.value = true;
   setFromMatch(data as Match);
+  await ensureBracketStartedIfBracket(data as Match);
 }
 
 async function applyScoreUpdate(newS1: number, newS2: number) {

@@ -134,6 +134,15 @@ async function submitScore() {
     return;
   }
 
+  // If this was a bracket match, flip bracket_started = true (first activity)
+  if (match.value.match_type === 'bracket' && session.tournament) {
+    await supabase
+      .from('tournaments')
+      .update({ bracket_started: true })
+      .eq('id', session.tournament.id)
+      .eq('bracket_started', false);
+  }
+
   toast.add({ severity: 'success', summary: 'Score submitted', life: 1800 });
   // Navigate back to match actions
   router.push({ name: 'match-actions', params: { accessCode: accessCode.value, matchId: id } });
