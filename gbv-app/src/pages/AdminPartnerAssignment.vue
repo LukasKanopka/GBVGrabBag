@@ -88,6 +88,7 @@ async function loadTournamentByAccessCode() {
   loading.value = true;
   try {
     await session.ensureAnon();
+    session.initFromStorage();
     session.setAccessCode(accessCode.value.trim());
     const t = await session.loadTournamentByCode(accessCode.value.trim());
     if (!t) {
@@ -198,8 +199,30 @@ function changeTournamentCode() {
   router.push({ name: 'tournament-public' });
 }
 
-onMounted(() => {
-  // Wait for explicit load by access code for consistency with other admin pages
+onMounted(async () => {
+  try {
+    await session.ensureAnon();
+    session.initFromStorage();
+
+    // If a tournament is already loaded, prefill and load teams
+    if (session.tournament) {
+      accessCode.value = session.accessCode ?? '';
+      await loadTeams();
+      return;
+    }
+
+    // Otherwise, attempt to restore by stored access code
+    if (session.accessCode) {
+      const t = await session.loadTournamentByCode(session.accessCode);
+      if (t) {
+        accessCode.value = session.accessCode ?? '';
+        toast.add({ severity: 'info', summary: 'Tournament restored', detail: t.name, life: 1200 });
+        await loadTeams();
+      }
+    }
+  } catch {
+    // ignore restore errors; user can manually load via access code
+  }
 });
 </script>
 

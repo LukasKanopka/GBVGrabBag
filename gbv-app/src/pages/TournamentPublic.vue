@@ -5,7 +5,6 @@ import { useSessionStore } from '../stores/session';
 import InputText from 'primevue/inputtext';
 import Button from 'primevue/button';
 import { useToast } from 'primevue/usetoast';
-import supabase from '../lib/supabase';
 
 
 const toast = useToast();

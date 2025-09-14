@@ -170,8 +170,41 @@ function addManualToPreview() {
 
 // Insert new players
 
+// Preflight: ensure tournament exists in DB to avoid FK 23503
+async function ensureTournamentExists(): Promise<boolean> {
+  try {
+    await session.ensureAnon();
+    session.initFromStorage();
+
+    // If no tournament loaded, try loading via stored access code
+    if (!session.tournament) {
+      if (session.accessCode) {
+        const t = await session.loadTournamentByCode(session.accessCode);
+        return !!t;
+      }
+      return false;
+    }
+
+    // Verify the referenced tournament id still exists server-side
+    const { data, error } = await supabase
+      .from('tournaments')
+      .select('id')
+      .eq('id', session.tournament.id)
+      .single();
+
+    if (error || !data) {
+      // Clear stale tournament reference
+      session.tournament = null;
+      return false;
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
 async function insertNewPlayers() {
-  if (!session.tournament) {
+  const ok = await ensureTournamentExists();
+  if (!ok || !session.tournament) {
     toast.add({ severity: 'warn', summary: 'Load a tournament first', life: 2000 });
     return;
   }
@@ -201,7 +234,19 @@ async function insertNewPlayers() {
     const newSetLc = new Set(newOnes.map((n) => n.toLowerCase()));
     parsedNames.value = parsedNames.value.filter((n) => !newSetLc.has(n.toLowerCase()));
   } catch (err: any) {
-    toast.add({ severity: 'error', summary: 'Insert failed', detail: err?.message ?? 'Unknown error', life: 3500 });
+    const code = (err && typeof err === 'object') ? (err as any).code : undefined;
+    if (code === '23503') {
+      // teams.tournament_id FK violation => referenced tournament no longer exists
+      session.tournament = null;
+      toast.add({
+        severity: 'error',
+        summary: 'Tournament missing',
+        detail: 'The selected tournament no longer exists. Load a valid tournament via access code and try again.',
+        life: 4000,
+      });
+    } else {
+      toast.add({ severity: 'error', summary: 'Insert failed', detail: err?.message ?? 'Unknown error', life: 3500 });
+    }
   } finally {
     loading.value = false;
   }
@@ -266,7 +311,19 @@ function changeTournamentCode() {
 }
 
 onMounted(async () => {
-  // No-op until a tournament is loaded; keep consistent with other admin pages
+  try {
+    await session.ensureAnon();
+    session.initFromStorage();
+    if (!session.tournament && session.accessCode) {
+      const t = await session.loadTournamentByCode(session.accessCode);
+      if (t) {
+        toast.add({ severity: 'info', summary: 'Tournament restored', detail: t.name, life: 1200 });
+        await loadTeams();
+      }
+    }
+  } catch {
+    // ignore restore errors
+  }
 });
 </script>
 
@@ -313,7 +370,7 @@ onMounted(async () => {
       <div v-else class="flex items-center justify-between">
         <div class="text-sm">
           Tournament:
-          <span class="font-semibold">{{ session.tournament.name }}</span>
+          <span class="font-semibold">{{ session.tournament?.name }}</span>
           <span class="ml-2 text-white/80">({{ session.accessCode }})</span>
         </div>
         <Button

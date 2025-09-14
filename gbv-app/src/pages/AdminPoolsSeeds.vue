@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { useToast } from 'primevue/usetoast';
 import InputText from 'primevue/inputtext';
@@ -14,6 +14,7 @@ type Pool = {
   id: string;
   name: string;
   court_assignment: string | null;
+  target_size: number | null;
 };
 
 type Team = {
@@ -41,6 +42,10 @@ const editPoolName = ref<string>('');
 const editCourt = ref<string>('');
 const newPoolName = ref<string>('');
 const newPoolCourt = ref<string>('');
+
+// Pool size options (only 4–5 supported)
+const poolSizeOptions = [4, 5].map((n) => ({ label: `${n} teams`, value: n }));
+const newPoolSize = ref<number | null>(null);
 
 // Derived
 const selectedPool = computed(() => pools.value.find((p) => p.id === selectedPoolId.value) || null);
@@ -126,7 +131,7 @@ async function loadPools() {
   if (!session.tournament) return;
   const { data, error } = await supabase
     .from('pools')
-    .select('id,name,court_assignment')
+    .select('id,name,court_assignment,target_size')
     .eq('tournament_id', session.tournament.id)
     .order('name', { ascending: true });
   if (error) {
@@ -157,7 +162,41 @@ async function loadTeams() {
   }
   teams.value = (data || []) as Team[];
 }
+ 
+onMounted(async () => {
+  try {
+    await session.ensureAnon();
+    session.initFromStorage();
 
+    // If a tournament is already loaded, fetch data
+    if (session.tournament) {
+      loading.value = true;
+      try {
+        await Promise.all([loadPools(), loadTeams()]);
+      } finally {
+        loading.value = false;
+      }
+      return;
+    }
+
+    // Attempt to restore by stored access code
+    if (session.accessCode) {
+      loading.value = true;
+      try {
+        const t = await session.loadTournamentByCode(session.accessCode);
+        if (t) {
+          await Promise.all([loadPools(), loadTeams()]);
+          toast.add({ severity: 'info', summary: 'Tournament restored', detail: t.name, life: 1200 });
+        }
+      } finally {
+        loading.value = false;
+      }
+    }
+  } catch {
+    // ignore restore errors; user can load via access code
+  }
+});
+ 
 // Pool CRUD
 function selectPool(p: Pool) {
   selectedPoolId.value = p.id;
@@ -172,17 +211,23 @@ async function createPool() {
     toast.add({ severity: 'warn', summary: 'Pool name required', life: 2000 });
     return;
   }
+  if (!newPoolSize.value || ![4, 5].includes(Number(newPoolSize.value))) {
+    toast.add({ severity: 'warn', summary: 'Select a pool size (4 or 5)', life: 2000 });
+    return;
+  }
   saving.value = true;
   try {
     const { error } = await supabase.from('pools').insert({
       tournament_id: session.tournament.id,
       name,
       court_assignment: newPoolCourt.value ? newPoolCourt.value.trim() : null,
+      target_size: newPoolSize.value,
     });
     if (error) throw error;
     toast.add({ severity: 'success', summary: 'Pool created', life: 1200 });
     newPoolName.value = '';
     newPoolCourt.value = '';
+    newPoolSize.value = null;
     await loadPools();
   } catch (err: any) {
     toast.add({ severity: 'error', summary: 'Create failed', detail: err?.message ?? 'Unknown error', life: 3000 });
@@ -364,6 +409,14 @@ async function setSeed(teamId: string, seedStr: string) {
             <div class="mt-2 grid grid-cols-1 gap-3">
               <InputText v-model="newPoolName" placeholder="e.g. Pool A" class="!rounded-xl !px-4 !py-3 !bg-white !text-slate-900" />
               <InputText v-model="newPoolCourt" placeholder="Court (optional)" class="!rounded-xl !px-4 !py-3 !bg-white !text-slate-900" />
+              <Dropdown
+                v-model="newPoolSize"
+                :options="poolSizeOptions"
+                optionLabel="label"
+                optionValue="value"
+                placeholder="Pool size (4–5)"
+                class="!rounded-xl"
+              />
               <Button
                 :loading="saving"
                 label="Create"

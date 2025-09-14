@@ -66,6 +66,7 @@ export interface Pool {
   tournament_id: UUID;
   name: string; // e.g., "Pool A"
   court_assignment: string | null;
+  target_size: number | null;
 }
 
 /**

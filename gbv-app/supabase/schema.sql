@@ -27,11 +27,15 @@ create table if not exists public.pools (
   id uuid primary key default gen_random_uuid(),
   tournament_id uuid not null references public.tournaments(id) on delete cascade,
   name text not null, -- e.g., "Pool A"
-  court_assignment text
+  court_assignment text,
+  target_size integer
 );
 
 create unique index if not exists pools_tournament_name_uidx on public.pools(tournament_id, name);
 create index if not exists pools_tournament_idx on public.pools(tournament_id);
+
+-- Backward-compatible migration for existing databases
+alter table public.pools add column if not exists target_size integer;
 
 -- =========================
 -- teams
