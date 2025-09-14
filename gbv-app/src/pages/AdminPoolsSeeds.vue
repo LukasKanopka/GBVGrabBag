@@ -3,11 +3,12 @@ import { ref, computed } from 'vue';
 import { useRouter } from 'vue-router';
 import { useToast } from 'primevue/usetoast';
 import InputText from 'primevue/inputtext';
+import Dropdown from 'primevue/dropdown';
 import Button from 'primevue/button';
-import DataTable from 'primevue/datatable';
-import Column from 'primevue/column';
 import supabase from '../lib/supabase';
 import { useSessionStore } from '../stores/session';
+import UiSectionHeading from '@/components/ui/UiSectionHeading.vue';
+import UiAccordion from '@/components/ui/UiAccordion.vue';
 
 type Pool = {
   id: string;
@@ -41,9 +42,6 @@ const editCourt = ref<string>('');
 const newPoolName = ref<string>('');
 const newPoolCourt = ref<string>('');
 
-// Drag state
-const draggingTeamId = ref<string | null>(null);
-
 // Derived
 const selectedPool = computed(() => pools.value.find((p) => p.id === selectedPoolId.value) || null);
 
@@ -75,6 +73,13 @@ function poolHasSeedConflicts(poolId: string) {
   }
   return false;
 }
+
+const moveOptions = computed(() => {
+  return [
+    { label: 'Unassigned', value: null },
+    ...pools.value.map((p) => ({ label: `${p.name}${p.court_assignment ? ` — Court ${p.court_assignment}` : ''}`, value: p.id }))
+  ];
+});
 
 // Loaders
 async function loadTournamentByAccessCode() {
@@ -213,37 +218,29 @@ async function deleteSelectedPool() {
   }
 }
 
-// Drag & Drop
-function onDragStartTeam(teamId: string) {
-  draggingTeamId.value = teamId;
-}
-
-async function onDropToPool(poolId: string | null) {
+// Move & Seed flows (no drag-and-drop)
+async function moveTeam(teamId: string, targetPoolId: string | null) {
   if (!session.tournament) return;
-  const teamId = draggingTeamId.value;
-  draggingTeamId.value = null;
-  if (!teamId) return;
-
   try {
     const { error } = await supabase
       .from('teams')
       .update({
-        pool_id: poolId,
-        seed_in_pool: null, // reset seed; admin must set within new pool
+        pool_id: targetPoolId,
+        seed_in_pool: null, // reset seed on move
       })
       .eq('id', teamId);
     if (error) throw error;
-    await loadTeams();
+    // local update
+    const t = teams.value.find((x) => x.id === teamId);
+    if (t) {
+      t.pool_id = targetPoolId;
+      t.seed_in_pool = null;
+    }
   } catch (err: any) {
     toast.add({ severity: 'error', summary: 'Move failed', detail: err?.message ?? 'Unknown error', life: 3000 });
   }
 }
 
-function allowDrop(e: DragEvent) {
-  e.preventDefault();
-}
-
-// Seeding
 async function setSeed(teamId: string, seedStr: string) {
   if (!teamId) return;
   const seed = seedStr ? Number(seedStr) : null;
@@ -254,7 +251,6 @@ async function setSeed(teamId: string, seedStr: string) {
   try {
     const { error } = await supabase.from('teams').update({ seed_in_pool: seed }).eq('id', teamId);
     if (error) throw error;
-    // Update local shallowly
     const t = teams.value.find((x) => x.id === teamId);
     if (t) t.seed_in_pool = seed;
   } catch (err: any) {
@@ -264,225 +260,232 @@ async function setSeed(teamId: string, seedStr: string) {
 </script>
 
 <template>
-  <section class="mx-auto max-w-7xl px-4 pb-10 pt-6">
-    <div class="rounded-2xl border border-slate-200 bg-white shadow-lg">
-      <div class="p-5 sm:p-7">
-        <div class="flex items-center justify-between gap-3">
-          <div>
-            <h2 class="text-2xl font-semibold text-slate-900">Pools & Seeds</h2>
-            <p class="mt-1 text-slate-600">
-              Create pools, assign teams via drag-and-drop, and set unique seeds per pool.
-            </p>
-          </div>
-          <Button
-            label="Back"
-            icon="pi pi-arrow-left"
-            severity="secondary"
-            outlined
-            class="!rounded-xl"
-            @click="router.push({ name: 'admin-dashboard' })"
+  <section class="mx-auto max-w-7xl px-4 py-6">
+    <UiSectionHeading
+      title="Pools & Seeds"
+      subtitle="Create pools, assign teams using Move, and set unique seeds per pool."
+      :divider="true"
+    >
+      
+        <Button
+          label="Back"
+          icon="pi pi-arrow-left"
+          severity="secondary"
+          outlined
+          class="!rounded-xl !border-white/40 !text-white hover:!bg-white/10"
+          @click="router.push({ name: 'admin-dashboard' })"
+        />
+      
+    </UiSectionHeading>
+
+    <!-- Tournament loader -->
+    <div class="rounded-lg border border-white/15 bg-white/5 p-4">
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end" v-if="!session.tournament">
+        <div class="sm:col-span-2">
+          <label class="block text-sm mb-2">Tournament Access Code</label>
+          <InputText
+            v-model="accessCode"
+            placeholder="e.g. GATORS2025"
+            class="w-full !rounded-xl !px-4 !py-3 !bg-white !text-slate-900"
           />
         </div>
+        <div class="flex">
+          <Button
+            :loading="loading"
+            label="Load Tournament"
+            icon="pi pi-search"
+            class="!rounded-xl !px-4 !py-3 border-none text-white gbv-grad-blue"
+            @click="loadTournamentByAccessCode"
+          />
+        </div>
+      </div>
+      <div v-else class="text-sm">
+        Loaded:
+        <span class="font-semibold">{{ session.tournament.name }}</span>
+        <span class="ml-2 text-white/80">({{ session.accessCode }})</span>
+      </div>
+    </div>
 
-        <!-- Tournament loader -->
-        <div class="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
-          <div class="rounded-xl bg-gbv-bg p-4 sm:col-span-3">
-            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
-              <div class="sm:col-span-2">
-                <label class="block text-sm font-medium text-slate-700 mb-2">Tournament Access Code</label>
-                <InputText
-                  v-model="accessCode"
-                  placeholder="e.g. GATORS2025"
-                  class="w-full !rounded-xl !px-4 !py-3"
-                />
-              </div>
-              <div class="flex">
+    <div v-if="session.tournament" class="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-3">
+      <!-- Left: Pools and editor -->
+      <div class="lg:col-span-1">
+        <UiAccordion title="Pools" :defaultOpen="true">
+          <div class="flex items-center justify-between">
+            <div class="text-xs text-white/80">Total: {{ pools.length }}</div>
+          </div>
+
+          <!-- Simple list of pools -->
+          <div class="mt-3 rounded-lg border border-white/15 overflow-hidden">
+            <button
+              v-for="p in pools"
+              :key="p.id"
+              class="w-full text-left px-4 py-3 border-b border-white/10 last:border-b-0 hover:bg-white/5"
+              :class="selectedPoolId === p.id ? 'bg-white/10' : ''"
+              @click="selectPool(p)"
+            >
+              <div class="font-semibold">{{ p.name }}</div>
+              <div class="text-xs text-white/80">Court: {{ p.court_assignment || 'TBD' }}</div>
+            </button>
+          </div>
+
+          <!-- New pool -->
+          <div class="mt-4 rounded-lg border border-white/15 bg-white/5 p-4">
+            <div class="text-sm font-semibold">New Pool</div>
+            <div class="mt-2 grid grid-cols-1 gap-3">
+              <InputText v-model="newPoolName" placeholder="e.g. Pool A" class="!rounded-xl !px-4 !py-3 !bg-white !text-slate-900" />
+              <InputText v-model="newPoolCourt" placeholder="Court (optional)" class="!rounded-xl !px-4 !py-3 !bg-white !text-slate-900" />
+              <Button
+                :loading="saving"
+                label="Create"
+                icon="pi pi-plus"
+                class="!rounded-xl border-none text-white gbv-grad-blue"
+                @click="createPool"
+              />
+            </div>
+          </div>
+
+          <!-- Edit pool -->
+          <div v-if="selectedPool" class="mt-4 rounded-lg border border-white/15 bg-white/5 p-4">
+            <div class="text-sm font-semibold">Edit Pool</div>
+            <div class="mt-2 grid grid-cols-1 gap-3">
+              <InputText v-model="editPoolName" placeholder="Pool name" class="!rounded-xl !px-4 !py-3 !bg-white !text-slate-900" />
+              <InputText v-model="editCourt" placeholder="Court (optional)" class="!rounded-xl !px-4 !py-3 !bg-white !text-slate-900" />
+              <div class="flex items-center gap-2">
                 <Button
-                  :loading="loading"
-                  label="Load Tournament"
-                  icon="pi pi-search"
-                  class="!rounded-xl !px-4 !py-3 border-none text-white gbv-grad-blue"
-                  @click="loadTournamentByAccessCode"
+                  :loading="saving"
+                  label="Save"
+                  icon="pi pi-save"
+                  class="!rounded-xl border-none text-white gbv-grad-blue"
+                  @click="saveSelectedPool"
+                />
+                <Button
+                  :loading="saving"
+                  label="Delete"
+                  icon="pi pi-trash"
+                  severity="danger"
+                  class="!rounded-xl"
+                  @click="deleteSelectedPool"
                 />
               </div>
             </div>
-            <div v-if="session.tournament" class="mt-2 text-sm text-slate-700">
-              Loaded: <span class="font-semibold">{{ session.tournament.name }}</span>
+            <div
+              v-if="selectedPool && poolHasSeedConflicts(selectedPool.id)"
+              class="mt-3 rounded-lg border border-amber-300 bg-amber-400/10 p-2 text-xs text-amber-100"
+            >
+              Warning: Duplicate seeds found in this pool.
             </div>
           </div>
-        </div>
+        </UiAccordion>
+      </div>
 
-        <div v-if="session.tournament" class="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-3">
-          <!-- Pools list and editor -->
-          <div class="lg:col-span-1">
-            <div class="rounded-xl bg-gbv-bg p-4">
-              <div class="flex items-center justify-between">
-                <h3 class="text-lg font-semibold text-slate-900">Pools</h3>
-                <div class="text-xs text-slate-600">Total: {{ pools.length }}</div>
-              </div>
-
-              <div class="mt-3">
-                <DataTable
-                  :value="pools"
-                  size="small"
-                  class="rounded-xl overflow-hidden"
-                  tableClass="!text-sm"
-                  selectionMode="single"
-                  :metaKeySelection="false"
-                  :selection="selectedPoolId ? [selectedPoolId] : []"
-                  @row-click="(e:any) => selectPool(e.data)"
-                >
-                  <Column field="name" header="Name" />
-                  <Column field="court_assignment" header="Court" />
-                </DataTable>
-              </div>
-
-              <div class="mt-4 rounded-xl border border-slate-200 bg-white p-4">
-                <div class="text-sm font-semibold text-slate-800">New Pool</div>
-                <div class="mt-2 grid grid-cols-1 gap-3">
-                  <InputText v-model="newPoolName" placeholder="e.g. Pool A" class="!rounded-xl !px-4 !py-3" />
-                  <InputText v-model="newPoolCourt" placeholder="Court (optional)" class="!rounded-xl !px-4 !py-3" />
-                  <Button
-                    :loading="saving"
-                    label="Create"
-                    icon="pi pi-plus"
-                    class="!rounded-xl border-none text-white gbv-grad-blue"
-                    @click="createPool"
-                  />
-                </div>
-              </div>
-
-              <div v-if="selectedPool" class="mt-4 rounded-xl border border-slate-200 bg-white p-4">
-                <div class="text-sm font-semibold text-slate-800">Edit Pool</div>
-                <div class="mt-2 grid grid-cols-1 gap-3">
-                  <InputText v-model="editPoolName" placeholder="Pool name" class="!rounded-xl !px-4 !py-3" />
-                  <InputText v-model="editCourt" placeholder="Court (optional)" class="!rounded-xl !px-4 !py-3" />
-                  <div class="flex items-center gap-2">
-                    <Button
-                      :loading="saving"
-                      label="Save"
-                      icon="pi pi-save"
-                      class="!rounded-xl border-none text-white gbv-grad-blue"
-                      @click="saveSelectedPool"
-                    />
-                    <Button
-                      :loading="saving"
-                      label="Delete"
-                      icon="pi pi-trash"
-                      severity="danger"
-                      class="!rounded-xl"
-                      @click="deleteSelectedPool"
-                    />
-                  </div>
-                </div>
-                <div
-                  v-if="selectedPool && poolHasSeedConflicts(selectedPool.id)"
-                  class="mt-3 rounded-lg border border-amber-300 bg-amber-50 p-2 text-xs text-amber-800"
-                >
-                  Warning: Duplicate seeds found in this pool.
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- Drag-and-drop area -->
-          <div class="lg:col-span-2">
-            <div class="grid grid-cols-1 gap-6">
-              <!-- Unassigned teams -->
+      <!-- Right: Unassigned + Pools accordions -->
+      <div class="lg:col-span-2">
+        <div class="grid grid-cols-1 gap-6">
+          <!-- Unassigned -->
+          <UiAccordion title="Unassigned Teams" :defaultOpen="true" subtitle="Move a team into a pool to assign">
+            <div class="rounded-lg border border-white/15 overflow-hidden">
               <div
-                class="rounded-xl bg-gbv-bg p-4"
-                @dragover="allowDrop"
-                @drop="onDropToPool(null)"
+                v-for="t in unassignedTeams"
+                :key="t.id"
+                class="px-4 py-3 border-b border-white/10 last:border-b-0"
               >
-                <div class="flex items-center justify-between">
-                  <h3 class="text-lg font-semibold text-slate-900">Unassigned Teams</h3>
-                  <div class="text-xs text-slate-600">Drag onto a pool to assign</div>
-                </div>
-                <div class="mt-3 grid gap-2 sm:grid-cols-2">
-                  <div
-                    v-for="t in unassignedTeams"
-                    :key="t.id"
-                    class="rounded-lg border border-slate-200 bg-white p-3 shadow-sm cursor-move"
-                    draggable="true"
-                    @dragstart="onDragStartTeam(t.id)"
-                    title="Drag to move to a pool"
-                  >
+                <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                  <div>
                     <div class="font-medium">{{ t.seeded_player_name }}</div>
-                    <div class="text-xs text-slate-500">No pool</div>
+                    <div class="text-xs text-white/80">No pool</div>
+                  </div>
+                  <div class="flex items-center gap-3">
+                    <label class="text-sm">Move</label>
+                    <Dropdown
+                      :options="moveOptions"
+                      optionLabel="label"
+                      optionValue="value"
+                      placeholder="Select pool"
+                      class="w-56 !rounded-xl"
+                      :pt="{ input: { class: '!py-2 !px-3 !text-sm !rounded-xl' } }"
+                      @update:modelValue="(val:any) => moveTeam(t.id, val)"
+                    />
                   </div>
                 </div>
               </div>
-
-              <!-- Pools with teams -->
-              <div class="grid grid-cols-1 gap-6 sm:grid-cols-2">
-                <div
-                  v-for="p in pools"
-                  :key="p.id"
-                  class="rounded-xl border border-slate-200 bg-white"
-                >
-                  <div
-                    class="rounded-t-xl bg-gbv-bg p-3"
-                    @dragover="allowDrop"
-                    @drop="onDropToPool(p.id)"
-                  >
-                    <div class="flex items-center justify-between">
-                      <div class="font-semibold text-slate-800">
-                        {{ p.name }} <span class="text-slate-500 text-xs">Court: {{ p.court_assignment || 'TBD' }}</span>
-                      </div>
-                      <div
-                        v-if="poolHasSeedConflicts(p.id)"
-                        class="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700"
-                        title="Duplicate seeds present"
-                      >
-                        Seed conflict
-                      </div>
-                    </div>
-                    <div class="text-xs text-slate-500">Drop here to assign</div>
-                  </div>
-
-                  <div class="p-3">
-                    <div
-                      v-for="t in teamsForPool(p.id)"
-                      :key="t.id"
-                      class="mb-2 flex items-center justify-between rounded-lg border border-slate-200 bg-white p-3 shadow-sm"
-                      draggable="true"
-                      @dragstart="onDragStartTeam(t.id)"
-                      title="Drag to move to another pool or to Unassigned"
-                    >
-                      <div>
-                        <div class="font-medium">{{ t.seeded_player_name }}</div>
-                        <div class="text-xs text-slate-500">ID: {{ t.id.slice(0, 8) }}…</div>
-                      </div>
-                      <div class="flex items-center gap-2">
-                        <label class="text-sm text-slate-600">Seed</label>
-                        <InputText
-                          :value="t.seed_in_pool ?? ''"
-                          style="width: 4.5rem"
-                          class="!rounded-xl !px-3 !py-2"
-                          placeholder="1"
-                          @change="(e:any) => setSeed(t.id, e.target.value)"
-                        />
-                      </div>
-                    </div>
-
-                    <div v-if="teamsForPool(p.id).length === 0" class="text-sm text-slate-500">
-                      No teams yet.
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div class="rounded-xl border border-dashed border-slate-300 p-4 text-center text-sm text-slate-600">
-                Tip: Drag a team card to the "Unassigned Teams" header area to remove it from a pool.
-              </div>
+              <div v-if="unassignedTeams.length === 0" class="px-4 py-3 text-sm text-white/80">No teams.</div>
             </div>
-          </div>
-        </div>
+          </UiAccordion>
 
-        <div class="mt-6 text-sm text-slate-600">
-          Seeds must be unique within each pool. You can leave seeds blank temporarily, but schedule generation requires complete seeding.
+          <!-- Each pool accordion -->
+          <div class="grid grid-cols-1 gap-6">
+            <UiAccordion
+              v-for="p in pools"
+              :key="p.id"
+              :title="p.name"
+              :subtitle="`Court: ${p.court_assignment || 'TBD'}`"
+              :defaultOpen="false"
+            >
+              <div class="flex items-center justify-between">
+                <div class="text-xs text-white/80">Drop-down to move teams between pools</div>
+                <div
+                  v-if="poolHasSeedConflicts(p.id)"
+                  class="rounded-full bg-amber-400/20 px-2 py-0.5 text-xs font-semibold text-amber-100"
+                  title="Duplicate seeds present"
+                >
+                  Seed conflict
+                </div>
+              </div>
+
+              <div class="mt-3 rounded-lg border border-white/15 overflow-hidden">
+                <div
+                  v-for="t in teamsForPool(p.id)"
+                  :key="t.id"
+                  class="px-4 py-3 border-b border-white/10 last:border-b-0"
+                >
+                  <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 items-center">
+                    <div>
+                      <div class="font-medium">{{ t.seeded_player_name }}</div>
+                      <div class="text-xs text-white/80">ID: {{ t.id.slice(0, 8) }}…</div>
+                    </div>
+                    <div class="flex items-center gap-2">
+                      <label class="text-sm">Seed</label>
+                      <InputText
+                        :value="t.seed_in_pool ?? ''"
+                        style="width: 4.5rem"
+                        class="!rounded-xl !px-3 !py-2 !bg-white !text-slate-900"
+                        placeholder="1"
+                        @change="(e:any) => setSeed(t.id, e.target.value)"
+                      />
+                    </div>
+                    <div class="flex items-center gap-3 lg:justify-end">
+                      <label class="text-sm">Move</label>
+                      <Dropdown
+                        :options="moveOptions"
+                        optionLabel="label"
+                        optionValue="value"
+                        :modelValue="t.pool_id"
+                        class="w-56 !rounded-xl"
+                        :pt="{ input: { class: '!py-2 !px-3 !text-sm !rounded-xl' } }"
+                        @update:modelValue="(val:any) => moveTeam(t.id, val)"
+                      />
+                    </div>
+                  </div>
+                </div>
+                <div v-if="teamsForPool(p.id).length === 0" class="px-4 py-3 text-sm text-white/80">
+                  No teams yet.
+                </div>
+              </div>
+            </UiAccordion>
+          </div>
+
+          <div class="rounded-lg border border-dashed border-white/25 p-4 text-center text-sm text-white/80">
+            Tip: Use the Move menu to change a team's pool. Seeds must be unique within each pool.
+          </div>
         </div>
       </div>
     </div>
+
+    <div class="mt-6 text-sm text-white/80">
+      Seeds must be unique within each pool. You can leave seeds blank temporarily, but schedule generation requires complete seeding.
+    </div>
   </section>
 </template>
+
+<style scoped>
+</style>

@@ -8,6 +8,7 @@ import Tag from 'primevue/tag';
 import supabase from '../lib/supabase';
 import { useSessionStore } from '../stores/session';
 import { checkPrerequisites, generateSchedule, type GenerateResult } from '../lib/schedule';
+import UiSectionHeading from '@/components/ui/UiSectionHeading.vue';
 
 const router = useRouter();
 const toast = useToast();
@@ -138,128 +139,124 @@ async function runGenerate() {
 </script>
 
 <template>
-  <section class="mx-auto max-w-6xl px-4 pb-10 pt-6">
-    <div class="rounded-2xl border border-slate-200 bg-white shadow-lg">
-      <div class="p-5 sm:p-7">
-        <div class="flex items-center justify-between gap-3">
-          <div>
-            <h2 class="text-2xl font-semibold text-slate-900">Generate Schedule</h2>
-            <p class="mt-1 text-slate-600">
-              Validate prerequisites and generate pool-play matches using schedule templates.
-            </p>
-          </div>
-          <Button
-            label="Back"
-            icon="pi pi-arrow-left"
-            severity="secondary"
-            outlined
-            class="!rounded-xl"
-            @click="router.push({ name: 'admin-dashboard' })"
+  <section class="mx-auto max-w-6xl px-4 py-6">
+    <UiSectionHeading
+      title="Generate Schedule"
+      subtitle="Validate prerequisites and generate pool-play matches using schedule templates."
+      :divider="true"
+    >
+      <Button
+        label="Back"
+        icon="pi pi-arrow-left"
+        severity="secondary"
+        outlined
+        class="!rounded-xl !border-white/40 !text-white hover:!bg-white/10"
+        @click="router.push({ name: 'admin-dashboard' })"
+      />
+    </UiSectionHeading>
+
+    <!-- Tournament loader / context -->
+    <div class="rounded-lg border border-white/15 bg-white/5 p-4">
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end" v-if="!session.tournament">
+        <div class="sm:col-span-2">
+          <label class="block text-sm mb-2">Tournament Access Code</label>
+          <InputText
+            v-model="accessCode"
+            placeholder="e.g. GATORS2025"
+            class="w-full !rounded-xl !px-4 !py-3 !bg-white !text-slate-900"
           />
         </div>
+        <div class="flex">
+          <Button
+            :loading="loading"
+            label="Load Tournament"
+            icon="pi pi-search"
+            class="!rounded-xl !px-4 !py-3 border-none text-white gbv-grad-blue"
+            @click="loadTournamentByAccessCode"
+          />
+        </div>
+      </div>
+      <div v-else class="text-sm">
+        Loaded: <span class="font-semibold">{{ session.tournament.name }}</span>
+        <span class="ml-2 text-white/80">({{ session.accessCode }})</span>
+      </div>
+    </div>
 
-        <!-- Tournament loader -->
-        <div class="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
-          <div class="rounded-xl bg-gbv-bg p-4 sm:col-span-3">
-            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
-              <div class="sm:col-span-2">
-                <label class="block text-sm font-medium text-slate-700 mb-2">Tournament Access Code</label>
-                <InputText
-                  v-model="accessCode"
-                  placeholder="e.g. GATORS2025"
-                  class="w-full !rounded-xl !px-4 !py-3"
-                />
-              </div>
-              <div class="flex">
-                <Button
-                  :loading="loading"
-                  label="Load Tournament"
-                  icon="pi pi-search"
-                  class="!rounded-xl !px-4 !py-3 border-none text-white gbv-grad-blue"
-                  @click="loadTournamentByAccessCode"
-                />
-              </div>
+    <div v-if="session.tournament" class="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-3">
+      <!-- Status / actions -->
+      <div class="lg:col-span-1">
+        <div class="rounded-lg border border-white/15 bg-white/5 p-4">
+          <div class="flex items-center justify-between">
+            <div class="text-sm">Existing pool matches</div>
+            <Tag :value="hasMatches ? 'Yes' : 'No'" :severity="hasMatches ? 'warn' : 'success'" />
+          </div>
+          <div class="mt-4 grid gap-3">
+            <Button
+              :loading="checking"
+              label="Check Prerequisites"
+              icon="pi pi-search"
+              class="!rounded-xl border-none text-white gbv-grad-blue"
+              @click="runPrereqCheck"
+            />
+            <Button
+              :disabled="!canGenerate"
+              :loading="generating"
+              label="Generate Schedule"
+              icon="pi pi-cog"
+              class="!rounded-xl border-none text-white gbv-grad-green"
+              @click="runGenerate"
+            />
+            <Button
+              v-if="hasMatches"
+              :loading="generating"
+              label="Delete Existing Pool Matches"
+              icon="pi pi-trash"
+              severity="danger"
+              class="!rounded-xl"
+              @click="deleteExistingPoolMatches"
+            />
+          </div>
+        </div>
+      </div>
+
+      <!-- Prereq results and last result -->
+      <div class="lg:col-span-2">
+        <div class="rounded-lg border border-white/15 bg-white/5 p-4">
+          <div class="flex items-center justify-between">
+            <h3 class="text-lg font-semibold">Prerequisite Results</h3>
+            <Tag :value="prereqErrors.length === 0 ? 'OK' : 'Issues'" :severity="prereqErrors.length === 0 ? 'success' : 'warn'" />
+          </div>
+          <div class="mt-3">
+            <div v-if="prereqErrors.length === 0" class="text-sm text-emerald-200">
+              All prerequisite checks passed. You can generate the schedule.
             </div>
-            <div v-if="session.tournament" class="mt-2 text-sm text-slate-700">
-              Loaded: <span class="font-semibold">{{ session.tournament.name }}</span>
-            </div>
+            <ul v-else class="list-disc list-inside text-sm text-amber-200">
+              <li v-for="(e, idx) in prereqErrors" :key="idx">{{ e }}</li>
+            </ul>
           </div>
         </div>
 
-        <div v-if="session.tournament" class="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-3">
-          <!-- Status / actions -->
-          <div class="lg:col-span-1">
-            <div class="rounded-xl bg-gbv-bg p-4">
-              <div class="flex items-center justify-between">
-                <div class="text-sm text-slate-700">Existing pool matches</div>
-                <Tag :value="hasMatches ? 'Yes' : 'No'" :severity="hasMatches ? 'warn' : 'success'" />
-              </div>
-              <div class="mt-4 grid gap-3">
-                <Button
-                  :loading="checking"
-                  label="Check Prerequisites"
-                  icon="pi pi-search"
-                  class="!rounded-xl border-none text-white gbv-grad-blue"
-                  @click="runPrereqCheck"
-                />
-                <Button
-                  :disabled="!canGenerate"
-                  :loading="generating"
-                  label="Generate Schedule"
-                  icon="pi pi-cog"
-                  class="!rounded-xl border-none text-white gbv-grad-green"
-                  @click="runGenerate"
-                />
-                <Button
-                  v-if="hasMatches"
-                  :loading="generating"
-                  label="Delete Existing Pool Matches"
-                  icon="pi pi-trash"
-                  severity="danger"
-                  class="!rounded-xl"
-                  @click="deleteExistingPoolMatches"
-                />
-              </div>
-            </div>
+        <div v-if="lastResult" class="mt-6 rounded-lg border border-white/15 bg-white/5 p-4">
+          <h3 class="text-lg font-semibold">Last Generation Result</h3>
+          <p class="mt-1 text-sm">
+            Inserted: <span class="font-semibold">{{ lastResult.inserted }}</span>
+          </p>
+          <div v-if="(lastResult.errors || []).length > 0" class="mt-2">
+            <div class="text-sm font-medium text-amber-200">Errors:</div>
+            <ul class="list-disc list-inside text-sm text-amber-200">
+              <li v-for="(e, idx) in lastResult.errors" :key="idx">{{ e }}</li>
+            </ul>
           </div>
-
-          <!-- Prereq results -->
-          <div class="lg:col-span-2">
-            <div class="rounded-xl border border-slate-200 bg-white p-4">
-              <div class="flex items-center justify-between">
-                <h3 class="text-lg font-semibold text-slate-900">Prerequisite Results</h3>
-                <Tag :value="prereqErrors.length === 0 ? 'OK' : 'Issues'" :severity="prereqErrors.length === 0 ? 'success' : 'warn'" />
-              </div>
-              <div class="mt-3">
-                <div v-if="prereqErrors.length === 0" class="text-sm text-emerald-700">
-                  All prerequisite checks passed. You can generate the schedule.
-                </div>
-                <ul v-else class="list-disc list-inside text-sm text-amber-800">
-                  <li v-for="(e, idx) in prereqErrors" :key="idx">{{ e }}</li>
-                </ul>
-              </div>
-            </div>
-
-            <div v-if="lastResult" class="mt-6 rounded-xl border border-slate-200 bg-white p-4">
-              <h3 class="text-lg font-semibold text-slate-900">Last Generation Result</h3>
-              <p class="mt-1 text-sm text-slate-700">
-                Inserted: <span class="font-semibold">{{ lastResult.inserted }}</span>
-              </p>
-              <div v-if="(lastResult.errors || []).length > 0" class="mt-2">
-                <div class="text-sm font-medium text-amber-800">Errors:</div>
-                <ul class="list-disc list-inside text-sm text-amber-800">
-                  <li v-for="(e, idx) in lastResult.errors" :key="idx">{{ e }}</li>
-                </ul>
-              </div>
-              <div v-else class="mt-2 text-sm text-emerald-700">No errors reported.</div>
-            </div>
-          </div>
-        </div>
-
-        <div class="mt-6 text-sm text-slate-600">
-          Note: Generation uses admin-defined templates per pool size. Only pool sizes 3–5 are supported. Ensure all seeded players have partners and templates exist for each size in use.
+          <div v-else class="mt-2 text-sm text-emerald-200">No errors reported.</div>
         </div>
       </div>
     </div>
+
+    <div class="mt-6 text-sm text-white/80">
+      Note: Generation uses admin-defined templates per pool size. Only pool sizes 3–5 are supported. Ensure all seeded players have partners and templates exist for each size in use.
+    </div>
   </section>
 </template>
+
+<style scoped>
+</style>

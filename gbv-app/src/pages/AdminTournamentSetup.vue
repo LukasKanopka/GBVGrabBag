@@ -10,6 +10,7 @@ import Column from 'primevue/column';
 import InputNumber from 'primevue/inputnumber';
 import ToggleButton from 'primevue/togglebutton';
 import supabase from '../lib/supabase';
+import UiSectionHeading from '@/components/ui/UiSectionHeading.vue';
 import type { Tournament, TournamentStatus, AdvancementRules, GameRules } from '../types/db';
 
 type EditableTournament = {
@@ -322,288 +323,283 @@ onMounted(async () => {
 </script>
 
 <template>
-  <section class="mx-auto max-w-6xl px-4 pb-10 pt-6">
-    <div class="rounded-2xl border border-slate-200 bg-white shadow-lg">
-      <div class="p-5 sm:p-7">
-        <div class="flex items-center justify-between gap-3">
-          <div>
-            <h2 class="text-2xl font-semibold text-slate-900">Tournament Setup</h2>
-            <p class="mt-1 text-slate-600">
-              Create and edit tournaments, rules, and status.
-            </p>
-          </div>
+  <section class="mx-auto max-w-6xl px-4 py-6">
+    <UiSectionHeading
+      title="Tournament Setup"
+      subtitle="Create and edit tournaments, rules, and status."
+      :divider="true"
+    >
+      <Button
+        label="Back"
+        icon="pi pi-arrow-left"
+        severity="secondary"
+        outlined
+        class="!rounded-xl !border-white/40 !text-white hover:!bg-white/10"
+        @click="router.push({ name: 'admin-dashboard' })"
+      />
+    </UiSectionHeading>
+
+    <div class="mt-4 grid grid-cols-1 gap-6 sm:grid-cols-3">
+      <!-- Left: Tournaments list -->
+      <div class="sm:col-span-1">
+        <div class="flex items-center justify-between">
+          <h3 class="text-lg font-semibold">Tournaments</h3>
           <Button
-            label="Back"
-            icon="pi pi-arrow-left"
-            severity="secondary"
-            outlined
-            class="!rounded-xl"
-            @click="router.push({ name: 'admin-dashboard' })"
+            label="New"
+            icon="pi pi-plus"
+            class="!rounded-xl border-none text-white gbv-grad-blue"
+            @click="newTournament"
           />
         </div>
 
-        <div class="mt-6 grid grid-cols-1 gap-6 sm:grid-cols-3">
-          <!-- Left: Tournaments list -->
-          <div class="sm:col-span-1">
-            <div class="flex items-center justify-between">
-              <h3 class="text-lg font-semibold text-slate-900">Tournaments</h3>
-              <Button
-                label="New"
-                icon="pi pi-plus"
-                class="!rounded-xl border-none text-white gbv-grad-blue"
-                @click="newTournament"
+        <div class="mt-3">
+          <DataTable
+            :value="tournaments"
+            size="small"
+            class="rounded-xl overflow-hidden"
+            :loading="loading"
+            tableClass="!text-sm"
+            :pt="{
+              table: { class: 'bg-transparent' },
+              thead: { class: 'bg-white/10 text-white' },
+              tbody: { class: 'text-white/90' }
+            }"
+          >
+            <Column field="name" header="Name" headerClass="!bg-white/10 !text-white">
+              <template #body="{ data }">
+                <div class="font-medium">{{ data.name }}</div>
+                <div class="text-xs text-white/80">{{ data.date }} • {{ data.status }}</div>
+              </template>
+            </Column>
+            <Column header="" style="width: 5rem" headerClass="!bg-white/10 !text-white">
+              <template #body="{ data }">
+                <Button label="Edit" size="small" text class="!text-white" @click="selectTournament(data)" />
+              </template>
+            </Column>
+          </DataTable>
+        </div>
+      </div>
+
+      <!-- Right: Editor -->
+      <div class="sm:col-span-2">
+        <!-- Basics -->
+        <div class="rounded-lg border border-white/15 bg-white/5 p-4">
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label class="block text-sm mb-2">Name</label>
+              <InputText v-model="form.name" class="w-full !rounded-xl !px-4 !py-3 !bg-white !text-slate-900" placeholder="e.g. Fall Classic 2025" />
+            </div>
+            <div>
+              <label class="block text-sm mb-2">Date (YYYY-MM-DD)</label>
+              <InputText v-model="form.date" class="w-full !rounded-xl !px-4 !py-3 !bg-white !text-slate-900" placeholder="2025-10-12" />
+            </div>
+            <div>
+              <label class="block text-sm mb-2">Access Code</label>
+              <InputText v-model="form.access_code" class="w-full !rounded-xl !px-4 !py-3 !bg-white !text-slate-900" placeholder="GATORS2025" />
+            </div>
+            <div>
+              <label class="block text-sm mb-2">Status</label>
+              <Dropdown
+                v-model="form.status"
+                :options="statusOptions"
+                optionLabel="label"
+                optionValue="value"
+                class="w-full !rounded-xl"
+                :pt="{ input: { class: '!py-3 !px-4 !text-base !rounded-xl' } }"
               />
             </div>
-
-            <div class="mt-3">
-              <DataTable
-                :value="tournaments"
-                size="small"
-                class="rounded-xl overflow-hidden"
-                :loading="loading"
-                tableClass="!text-sm"
-              >
-                <Column field="name" header="Name">
-                  <template #body="{ data }">
-                    <div class="font-medium">{{ data.name }}</div>
-                    <div class="text-xs text-slate-500">{{ data.date }} • {{ data.status }}</div>
-                  </template>
-                </Column>
-                <Column header="" style="width: 5rem">
-                  <template #body="{ data }">
-                    <Button label="Edit" size="small" text @click="selectTournament(data)" />
-                  </template>
-                </Column>
-              </DataTable>
-            </div>
           </div>
+        </div>
 
-          <!-- Right: Editor -->
-          <div class="sm:col-span-2">
-            <!-- Basics -->
-            <div class="rounded-xl bg-gbv-bg p-4">
-              <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label class="block text-sm font-medium text-slate-700 mb-2">Name</label>
-                  <InputText v-model="form.name" class="w-full !rounded-xl !px-4 !py-3" placeholder="e.g. Fall Classic 2025" />
+        <!-- Rules -->
+        <div class="mt-6 grid grid-cols-1 gap-6 sm:grid-cols-2">
+          <!-- Advancement Rules -->
+          <div class="rounded-lg border border-white/15 bg-white/5 p-4">
+            <div class="text-sm font-semibold">Advancement Rules</div>
+
+            <div class="mt-3 space-y-3">
+              <div class="rounded-lg border border-white/15 bg-white/5 p-3">
+                <div class="text-sm font-medium">Advancers per Pool Size</div>
+                <div class="mt-2 grid grid-cols-1 gap-3">
+                  <div class="flex items-center justify-between gap-3">
+                    <div class="text-sm text-white/80">3 teams</div>
+                    <Dropdown
+                      :options="[0,1,2,3]"
+                      :modelValue="getAdvanceCount(3)"
+                      @update:modelValue="(v:any) => setAdvanceCount(3, v)"
+                      class="!rounded-xl w-32"
+                      :pt="{ input: { class: '!py-2 !px-3 !text-sm !rounded-xl' } }"
+                    />
+                  </div>
+                  <div class="flex items-center justify-between gap-3">
+                    <div class="text-sm text-white/80">4 teams</div>
+                    <Dropdown
+                      :options="[0,1,2,3,4]"
+                      :modelValue="getAdvanceCount(4)"
+                      @update:modelValue="(v:any) => setAdvanceCount(4, v)"
+                      class="!rounded-xl w-32"
+                      :pt="{ input: { class: '!py-2 !px-3 !text-sm !rounded-xl' } }"
+                    />
+                  </div>
+                  <div class="flex items-center justify-between gap-3">
+                    <div class="text-sm text-white/80">5 teams</div>
+                    <Dropdown
+                      :options="[0,1,2,3,4,5]"
+                      :modelValue="getAdvanceCount(5)"
+                      @update:modelValue="(v:any) => setAdvanceCount(5, v)"
+                      class="!rounded-xl w-32"
+                      :pt="{ input: { class: '!py-2 !px-3 !text-sm !rounded-xl' } }"
+                    />
+                  </div>
                 </div>
-                <div>
-                  <label class="block text-sm font-medium text-slate-700 mb-2">Date (YYYY-MM-DD)</label>
-                  <InputText v-model="form.date" class="w-full !rounded-xl !px-4 !py-3" placeholder="2025-10-12" />
-                </div>
-                <div>
-                  <label class="block text-sm font-medium text-slate-700 mb-2">Access Code</label>
-                  <InputText v-model="form.access_code" class="w-full !rounded-xl !px-4 !py-3" placeholder="GATORS2025" />
-                </div>
-                <div>
-                  <label class="block text-sm font-medium text-slate-700 mb-2">Status</label>
-                  <Dropdown
-                    v-model="form.status"
-                    :options="statusOptions"
-                    optionLabel="label"
-                    optionValue="value"
-                    class="w-full !rounded-xl"
-                    :pt="{ input: { class: '!py-3 !px-4 !text-base !rounded-xl' } }"
+              </div>
+
+              <div class="rounded-lg border border-white/15 bg-white/5 p-3">
+                <div class="text-sm font-medium">Bracket Format</div>
+                <Dropdown
+                  v-model="form.advancement_rules.bracketFormat"
+                  :options="[
+                    { label: 'Single Elimination', value: 'single_elimination' },
+                    { label: 'Best-of-3 Single Elim (Finals)', value: 'best_of_3_single_elim' }
+                  ]"
+                  optionLabel="label"
+                  optionValue="value"
+                  class="w-full !rounded-xl mt-2"
+                  :pt="{ input: { class: '!py-2 !px-3 !text-sm !rounded-xl' } }"
+                />
+              </div>
+
+              <div class="rounded-lg border border-white/15 bg-white/5 p-3">
+                <div class="text-sm font-medium">Tiebreakers (reorder with arrows)</div>
+                <ul class="mt-2 space-y-2">
+                  <li
+                    v-for="(tb, idx) in (form.advancement_rules.tiebreakers || [])"
+                    :key="tb"
+                    class="flex items-center justify-between rounded-md border border-white/15 bg-white/5 p-2"
+                  >
+                    <div class="text-sm capitalize">
+                      {{ formatTb(tb as any) }}
+                    </div>
+                    <div class="flex items-center gap-1">
+                      <Button icon="pi pi-arrow-up" text rounded @click="moveTiebreaker(idx, -1)" />
+                      <Button icon="pi pi-arrow-down" text rounded @click="moveTiebreaker(idx, 1)" />
+                    </div>
+                  </li>
+                </ul>
+                <div class="mt-3 flex flex-wrap gap-2">
+                  <Button
+                    v-for="opt in tiebreakerOptions"
+                    :key="opt"
+                    :label="(((form.advancement_rules.tiebreakers || []) as any[]).includes(opt) ? 'Remove ' : 'Add ') + formatTb(opt as any)"
+                    size="small"
+                    :severity="((form.advancement_rules.tiebreakers || []) as any[]).includes(opt) ? 'danger' : 'secondary'"
+                    outlined
+                    class="!rounded-xl"
+                    @click="toggleTiebreaker(opt)"
                   />
                 </div>
               </div>
             </div>
+          </div>
 
-            <!-- Rules -->
-            <div class="mt-6 grid grid-cols-1 gap-6 sm:grid-cols-2">
-              <!-- Advancement Rules -->
-              <div class="rounded-xl bg-gbv-bg p-4">
-                <div class="flex items-center justify-between">
-                  <label class="block text-sm font-semibold text-slate-700">Advancement Rules</label>
-                </div>
+          <!-- Game Rules -->
+          <div class="rounded-lg border border-white/15 bg-white/5 p-4">
+            <div class="text-sm font-semibold">Game Rules</div>
 
-                <div class="mt-3 space-y-3">
-                  <div class="rounded-lg border border-slate-200 bg-white p-3">
-                    <div class="text-sm font-medium text-slate-800 mb-2">Advancers per Pool Size</div>
-                    <div class="grid grid-cols-1 gap-3">
-                      <div class="flex items-center justify-between gap-3">
-                        <div class="text-sm text-slate-700">3 teams</div>
-                        <Dropdown
-                          :options="[0,1,2,3]"
-                          :modelValue="getAdvanceCount(3)"
-                          @update:modelValue="(v:any) => setAdvanceCount(3, v)"
-                          class="!rounded-xl w-32"
-                          :pt="{ input: { class: '!py-2 !px-3 !text-sm !rounded-xl' } }"
-                        />
-                      </div>
-                      <div class="flex items-center justify-between gap-3">
-                        <div class="text-sm text-slate-700">4 teams</div>
-                        <Dropdown
-                          :options="[0,1,2,3,4]"
-                          :modelValue="getAdvanceCount(4)"
-                          @update:modelValue="(v:any) => setAdvanceCount(4, v)"
-                          class="!rounded-xl w-32"
-                          :pt="{ input: { class: '!py-2 !px-3 !text-sm !rounded-xl' } }"
-                        />
-                      </div>
-                      <div class="flex items-center justify-between gap-3">
-                        <div class="text-sm text-slate-700">5 teams</div>
-                        <Dropdown
-                          :options="[0,1,2,3,4,5]"
-                          :modelValue="getAdvanceCount(5)"
-                          @update:modelValue="(v:any) => setAdvanceCount(5, v)"
-                          class="!rounded-xl w-32"
-                          :pt="{ input: { class: '!py-2 !px-3 !text-sm !rounded-xl' } }"
-                        />
-                      </div>
-                    </div>
+            <div class="mt-3 grid grid-cols-1 gap-4">
+              <div class="rounded-lg border border-white/15 bg-white/5 p-3">
+                <div class="text-sm font-semibold">Pool Play</div>
+                <div class="mt-3 grid grid-cols-2 gap-3">
+                  <div>
+                    <label class="block text-xs text-white/80 mb-1">Set Target</label>
+                    <InputNumber v-model="form.game_rules.pool!.setTarget" :min="1" class="w-full" :pt="{ input: { class: '!w-full !py-2 !px-3 !rounded-xl' } }" />
                   </div>
-
-                  <div class="rounded-lg border border-slate-200 bg-white p-3">
-                    <div class="text-sm font-medium text-slate-800 mb-2">Bracket Format</div>
+                  <div>
+                    <label class="block text-xs text-white/80 mb-1">Cap</label>
+                    <InputNumber v-model="form.game_rules.pool!.cap" :min="1" class="w-full" :pt="{ input: { class: '!w-full !py-2 !px-3 !rounded-xl' } }" />
+                  </div>
+                  <div>
+                    <label class="block text-xs text-white/80 mb-1">Best Of</label>
                     <Dropdown
-                      v-model="form.advancement_rules.bracketFormat"
-                      :options="[
-                        { label: 'Single Elimination', value: 'single_elimination' },
-                        { label: 'Best-of-3 Single Elim (Finals)', value: 'best_of_3_single_elim' }
-                      ]"
-                      optionLabel="label"
-                      optionValue="value"
+                      v-model="form.game_rules.pool!.bestOf"
+                      :options="[1,3]"
                       class="w-full !rounded-xl"
                       :pt="{ input: { class: '!py-2 !px-3 !text-sm !rounded-xl' } }"
                     />
                   </div>
-
-                  <div class="rounded-lg border border-slate-200 bg-white p-3">
-                    <div class="text-sm font-medium text-slate-800 mb-2">Tiebreakers (drag order using arrows)</div>
-                    <ul class="space-y-2">
-                      <li
-                        v-for="(tb, idx) in (form.advancement_rules.tiebreakers || [])"
-                        :key="tb"
-                        class="flex items-center justify-between rounded-md border border-slate-200 bg-white p-2"
-                      >
-                        <div class="text-sm font-medium text-slate-800 capitalize">
-                          {{ formatTb(tb as any) }}
-                        </div>
-                        <div class="flex items-center gap-1">
-                          <Button icon="pi pi-arrow-up" text rounded @click="moveTiebreaker(idx, -1)" />
-                          <Button icon="pi pi-arrow-down" text rounded @click="moveTiebreaker(idx, 1)" />
-                        </div>
-                      </li>
-                    </ul>
-                    <div class="mt-3 flex flex-wrap gap-2">
-                      <Button
-                        v-for="opt in tiebreakerOptions"
-                        :key="opt"
-                        :label="(((form.advancement_rules.tiebreakers || []) as Tiebreaker[]).includes(opt) ? 'Remove ' : 'Add ') + formatTb(opt as any)"
-                        size="small"
-                        :severity="((form.advancement_rules.tiebreakers || []) as Tiebreaker[]).includes(opt) ? 'danger' : 'secondary'"
-                        outlined
-                        class="!rounded-xl"
-                        @click="toggleTiebreaker(opt)"
-                      />
+                  <div class="flex items-end">
+                    <div class="flex items-center gap-2">
+                      <span class="text-sm">Win by 2</span>
+                      <ToggleButton v-model="form.game_rules.pool!.winBy2" onLabel="Yes" offLabel="No" />
                     </div>
                   </div>
                 </div>
               </div>
 
-              <!-- Game Rules -->
-              <div class="rounded-xl bg-gbv-bg p-4">
-                <div class="flex items-center justify-between">
-                  <label class="block text-sm font-semibold text-slate-700">Game Rules</label>
-                </div>
-
-                <div class="mt-3 grid grid-cols-1 gap-4">
-                  <div class="rounded-lg border border-slate-200 bg-white p-3">
-                    <div class="text-sm font-semibold text-slate-900">Pool Play</div>
-                    <div class="mt-3 grid grid-cols-2 gap-3">
-                      <div>
-                        <label class="block text-xs text-slate-600 mb-1">Set Target</label>
-                        <InputNumber v-model="form.game_rules.pool!.setTarget" :min="1" class="w-full" :pt="{ input: { class: '!w-full !py-2 !px-3 !rounded-xl' } }" />
-                      </div>
-                      <div>
-                        <label class="block text-xs text-slate-600 mb-1">Cap</label>
-                        <InputNumber v-model="form.game_rules.pool!.cap" :min="1" class="w-full" :pt="{ input: { class: '!w-full !py-2 !px-3 !rounded-xl' } }" />
-                      </div>
-                      <div>
-                        <label class="block text-xs text-slate-600 mb-1">Best Of</label>
-                        <Dropdown
-                          v-model="form.game_rules.pool!.bestOf"
-                          :options="[1,3]"
-                          class="w-full !rounded-xl"
-                          :pt="{ input: { class: '!py-2 !px-3 !text-sm !rounded-xl' } }"
-                        />
-                      </div>
-                      <div class="flex items-end">
-                        <div class="flex items-center gap-2">
-                          <span class="text-sm text-slate-700">Win by 2</span>
-                          <ToggleButton v-model="form.game_rules.pool!.winBy2" onLabel="Yes" offLabel="No" />
-                        </div>
-                      </div>
+              <div class="rounded-lg border border-white/15 bg-white/5 p-3">
+                <div class="text-sm font-semibold">Bracket</div>
+                <div class="mt-3 grid grid-cols-2 gap-3">
+                  <div>
+                    <label class="block text-xs text-white/80 mb-1">Set Target</label>
+                    <InputNumber v-model="form.game_rules.bracket!.setTarget" :min="1" class="w-full" :pt="{ input: { class: '!w-full !py-2 !px-3 !rounded-xl' } }" />
+                  </div>
+                  <div>
+                    <label class="block text-xs text-white/80 mb-1">Cap</label>
+                    <InputNumber v-model="form.game_rules.bracket!.cap" :min="1" class="w-full" :pt="{ input: { class: '!w-full !py-2 !px-3 !rounded-xl' } }" />
+                  </div>
+                  <div>
+                    <label class="block text-xs text-white/80 mb-1">Best Of</label>
+                    <Dropdown
+                      v-model="form.game_rules.bracket!.bestOf"
+                      :options="[1,3]"
+                      class="w-full !rounded-xl"
+                      :pt="{ input: { class: '!py-2 !px-3 !text-sm !rounded-xl' } }"
+                    />
+                  </div>
+                  <div class="flex items-end">
+                    <div class="flex items-center gap-2">
+                      <span class="text-sm">Win by 2</span>
+                      <ToggleButton v-model="form.game_rules.bracket!.winBy2" onLabel="Yes" offLabel="No" />
                     </div>
                   </div>
-
-                  <div class="rounded-lg border border-slate-200 bg-white p-3">
-                    <div class="text-sm font-semibold text-slate-900">Bracket</div>
-                    <div class="mt-3 grid grid-cols-2 gap-3">
-                      <div>
-                        <label class="block text-xs text-slate-600 mb-1">Set Target</label>
-                        <InputNumber v-model="form.game_rules.bracket!.setTarget" :min="1" class="w-full" :pt="{ input: { class: '!w-full !py-2 !px-3 !rounded-xl' } }" />
-                      </div>
-                      <div>
-                        <label class="block text-xs text-slate-600 mb-1">Cap</label>
-                        <InputNumber v-model="form.game_rules.bracket!.cap" :min="1" class="w-full" :pt="{ input: { class: '!w-full !py-2 !px-3 !rounded-xl' } }" />
-                      </div>
-                      <div>
-                        <label class="block text-xs text-slate-600 mb-1">Best Of</label>
-                        <Dropdown
-                          v-model="form.game_rules.bracket!.bestOf"
-                          :options="[1,3]"
-                          class="w-full !rounded-xl"
-                          :pt="{ input: { class: '!py-2 !px-3 !text-sm !rounded-xl' } }"
-                        />
-                      </div>
-                      <div class="flex items-end">
-                        <div class="flex items-center gap-2">
-                          <span class="text-sm text-slate-700">Win by 2</span>
-                          <ToggleButton v-model="form.game_rules.bracket!.winBy2" onLabel="Yes" offLabel="No" />
-                        </div>
-                      </div>
-                      <div v-if="form.game_rules.bracket!.bestOf === 3">
-                        <label class="block text-xs text-slate-600 mb-1">Third Set Target</label>
-                        <InputNumber v-model="form.game_rules.bracket!.thirdSetTarget" :min="1" class="w-full" :pt="{ input: { class: '!w-full !py-2 !px-3 !rounded-xl' } }" />
-                      </div>
-                    </div>
+                  <div v-if="form.game_rules.bracket!.bestOf === 3">
+                    <label class="block text-xs text-white/80 mb-1">Third Set Target</label>
+                    <InputNumber v-model="form.game_rules.bracket!.thirdSetTarget" :min="1" class="w-full" :pt="{ input: { class: '!w-full !py-2 !px-3 !rounded-xl' } }" />
                   </div>
                 </div>
               </div>
-            </div>
-
-            <!-- Bracket flags -->
-            <div class="mt-6 grid grid-cols-1 gap-6 sm:grid-cols-2">
-              <div class="rounded-xl border border-slate-200 p-4">
-                <div class="text-sm text-slate-700">Bracket Started</div>
-                <div class="mt-1 font-semibold">{{ form.bracket_started ? 'Yes' : 'No' }}</div>
-                <div class="mt-2 text-xs text-slate-500">Generated at: {{ form.bracket_generated_at || '—' }}</div>
-                <div class="mt-2 text-xs text-slate-500">Note: This is managed by the bracket engine.</div>
-              </div>
-            </div>
-
-            <!-- Actions -->
-            <div class="mt-6 flex items-center gap-3">
-              <Button
-                :loading="saving"
-                label="Save"
-                icon="pi pi-save"
-                class="!rounded-xl border-none text-white gbv-grad-blue"
-                @click="saveTournament"
-              />
-              <Button
-                v-if="form.id"
-                :loading="saving"
-                label="Delete"
-                icon="pi pi-trash"
-                severity="danger"
-                class="!rounded-xl"
-                @click="deleteTournament"
-              />
             </div>
           </div>
+        </div>
+
+        <!-- Bracket flags -->
+        <div class="mt-6 grid grid-cols-1 gap-6 sm:grid-cols-2">
+          <div class="rounded-lg border border-white/15 bg-white/5 p-4">
+            <div class="text-sm">Bracket Started</div>
+            <div class="mt-1 font-semibold">{{ form.bracket_started ? 'Yes' : 'No' }}</div>
+            <div class="mt-2 text-xs text-white/80">Generated at: {{ form.bracket_generated_at || '—' }}</div>
+            <div class="mt-2 text-xs text-white/80">Note: This is managed by the bracket engine.</div>
+          </div>
+        </div>
+
+        <!-- Actions -->
+        <div class="mt-6 flex items-center gap-3">
+          <Button
+            :loading="saving"
+            label="Save"
+            icon="pi pi-save"
+            class="!rounded-xl border-none text-white gbv-grad-blue"
+            @click="saveTournament"
+          />
+          <Button
+            v-if="form.id"
+            :loading="saving"
+            label="Delete"
+            icon="pi pi-trash"
+            severity="danger"
+            class="!rounded-xl"
+            @click="deleteTournament"
+          />
         </div>
       </div>
     </div>

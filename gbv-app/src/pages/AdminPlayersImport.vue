@@ -8,6 +8,8 @@ import DataTable from 'primevue/datatable';
 import Column from 'primevue/column';
 import supabase from '../lib/supabase';
 import { useSessionStore } from '../stores/session';
+import UiSectionHeading from '@/components/ui/UiSectionHeading.vue';
+import UiAccordion from '@/components/ui/UiAccordion.vue';
 
 type TeamRow = {
   id: string;
@@ -153,6 +155,10 @@ function clearPreview() {
   parsedNames.value = [];
 }
 
+function removePreviewAt(idx: number) {
+  parsedNames.value = parsedNames.value.filter((_, i) => i !== idx);
+}
+
 // Manual add to preview list
 
 function addManualToPreview() {
@@ -265,83 +271,74 @@ onMounted(async () => {
 </script>
 
 <template>
-  <section class="mx-auto max-w-6xl px-4 pb-10 pt-6">
-    <div class="rounded-2xl border border-slate-200 bg-white shadow-lg">
-      <div class="p-5 sm:p-7">
-        <div class="flex items-center justify-between gap-3">
-          <div>
-            <h2 class="text-2xl font-semibold text-slate-900">Players Import</h2>
-            <p class="mt-1 text-slate-600">
-              Upload a CSV with one column "seeded_player_name" (header required) or add manually.
-            </p>
-          </div>
-          <Button
-            label="Back"
-            icon="pi pi-arrow-left"
-            severity="secondary"
-            outlined
-            class="!rounded-xl"
-            @click="router.push({ name: 'admin-dashboard' })"
+  <section class="mx-auto max-w-6xl px-4 py-6">
+    <UiSectionHeading
+      title="Players Import"
+      subtitle="Upload a CSV (seeded_player_name) or add manually. Designed mobile-first; desktop table appears on larger screens."
+      :divider="true"
+    >
+      
+        <Button
+          label="Back"
+          icon="pi pi-arrow-left"
+          severity="secondary"
+          outlined
+          class="!rounded-xl !border-white/40 !text-white hover:!bg-white/10"
+          @click="router.push({ name: 'admin-dashboard' })"
+        />
+      
+    </UiSectionHeading>
+
+    <!-- Tournament context -->
+    <div class="rounded-lg border border-white/15 bg-white/5 p-4">
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end" v-if="!session.tournament">
+        <div class="sm:col-span-2">
+          <label class="block text-sm mb-2">Tournament Access Code</label>
+          <InputText
+            v-model="accessCode"
+            placeholder="e.g. GATORS2025"
+            class="w-full !rounded-xl !px-4 !py-3 !bg-white !text-slate-900"
           />
         </div>
-
-        <!-- Tournament context -->
-        <div class="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
-          <!-- Loader shown only when no tournament is loaded -->
-          <div class="rounded-xl bg-gbv-bg p-4 sm:col-span-3" v-if="!session.tournament">
-            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
-              <div class="sm:col-span-2">
-                <label class="block text-sm font-medium text-slate-700 mb-2">Tournament Access Code</label>
-                <InputText
-                  v-model="accessCode"
-                  placeholder="e.g. GATORS2025"
-                  class="w-full !rounded-xl !px-4 !py-3"
-                />
-              </div>
-              <div class="flex">
-                <Button
-                  :loading="loading"
-                  label="Load Tournament"
-                  icon="pi pi-search"
-                  class="!rounded-xl !px-4 !py-3 border-none text-white gbv-grad-blue"
-                  @click="loadTournamentByAccessCode"
-                />
-              </div>
-            </div>
-          </div>
-          <!-- Subtle chip when tournament is loaded -->
-          <div class="rounded-xl bg-gbv-bg p-4 sm:col-span-3" v-else>
-            <div class="flex items-center justify-between">
-              <div class="text-sm text-slate-700">
-                Tournament:
-                <span class="font-semibold">{{ session.tournament.name }}</span>
-                <span class="ml-2 text-slate-500">({{ session.accessCode }})</span>
-              </div>
-              <Button
-                label="Change"
-                severity="secondary"
-                text
-                class="!rounded-xl"
-                icon="pi pi-external-link"
-                @click="changeTournamentCode"
-              />
-            </div>
-          </div>
+        <div class="flex">
+          <Button
+            :loading="loading"
+            label="Load Tournament"
+            icon="pi pi-search"
+            class="!rounded-xl !px-4 !py-3 border-none text-white gbv-grad-blue"
+            @click="loadTournamentByAccessCode"
+          />
         </div>
+      </div>
+      <div v-else class="flex items-center justify-between">
+        <div class="text-sm">
+          Tournament:
+          <span class="font-semibold">{{ session.tournament.name }}</span>
+          <span class="ml-2 text-white/80">({{ session.accessCode }})</span>
+        </div>
+        <Button
+          label="Change"
+          severity="secondary"
+          text
+          class="!rounded-xl !text-white"
+          icon="pi pi-external-link"
+          @click="changeTournamentCode"
+        />
+      </div>
+    </div>
 
-        <div class="mt-6 grid grid-cols-1 gap-6 sm:grid-cols-2">
-          <!-- CSV import panel -->
-          <div class="rounded-xl bg-gbv-bg p-4">
-            <h3 class="text-lg font-semibold text-slate-900">CSV Import</h3>
-            <p class="mt-1 text-sm text-slate-700">
-              CSV must contain a single column with header <code>seeded_player_name</code>.
-            </p>
-            <div class="mt-3 flex items-center gap-3">
+    <!-- CSV Import and Manual Add -->
+    <div class="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-2">
+      <!-- CSV Import -->
+      <div>
+        <UiAccordion title="CSV Import" :defaultOpen="true" subtitle="Single column with header seeded_player_name">
+          <div class="grid gap-3">
+            <div class="flex items-center gap-3">
               <input
                 ref="fileInput"
                 type="file"
                 accept=".csv,text/csv"
-                class="block w-full text-sm text-slate-700"
+                class="block w-full text-sm file:mr-3 file:rounded-md file:border-0 file:bg-white file:px-3 file:py-2 file:text-slate-900"
                 @change="handleFileChange"
               />
               <Button
@@ -349,55 +346,103 @@ onMounted(async () => {
                 size="small"
                 severity="secondary"
                 outlined
-                class="!rounded-xl"
+                class="!rounded-xl !border-white/40 !text-white hover:!bg-white/10"
                 @click="clearPreview"
               />
             </div>
 
-            <div class="mt-4">
-              <DataTable :value="preview" size="small" class="rounded-xl overflow-hidden" tableClass="!text-sm">
-                <Column field="name" header="Name" />
-                <Column field="status" header="Status">
+            <!-- Mobile-first preview list -->
+            <div class="rounded-lg border border-white/15 overflow-hidden lg:hidden" v-if="preview.length">
+              <div
+                v-for="(row, idx) in preview"
+                :key="row.name + '-' + idx"
+                class="flex items-center justify-between gap-3 px-4 py-3 border-b border-white/10 last:border-b-0"
+              >
+                <div class="min-w-0">
+                  <div class="font-medium truncate">{{ row.name }}</div>
+                  <div class="mt-0.5 text-xs">
+                    <span
+                      :class="[
+                        'px-2 py-0.5 rounded-full font-semibold',
+                        row.status === 'new' ? 'bg-emerald-400/20 text-emerald-200' :
+                        row.status === 'existing' ? 'bg-white/20 text-white' :
+                        'bg-amber-400/20 text-amber-200'
+                      ]"
+                    >
+                      {{ row.status.replace(/_/g, ' ') }}
+                    </span>
+                  </div>
+                </div>
+                <div class="shrink-0 flex items-center gap-2">
+                  <Button
+                    icon="pi pi-times"
+                    text
+                    severity="secondary"
+                    class="!rounded-xl !text-white"
+                    @click="removePreviewAt(idx)"
+                    :aria-label="'Remove ' + row.name"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <!-- Desktop DataTable preview -->
+            <div class="hidden lg:block">
+              <DataTable
+                :value="preview"
+                size="small"
+                class="rounded-xl overflow-hidden"
+                tableClass="!text-sm"
+                :pt="{
+                  table: { class: 'bg-transparent' },
+                  thead: { class: 'bg-white/10 text-white' },
+                  tbody: { class: 'text-white/90' }
+                }"
+              >
+                <Column field="name" header="Name" headerClass="!bg-white/10 !text-white" />
+                <Column field="status" header="Status" headerClass="!bg-white/10 !text-white">
                   <template #body="{ data }">
                     <span
                       :class="{
-                        'px-2 py-1 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-700': data.status === 'new',
-                        'px-2 py-1 rounded-full text-xs font-semibold bg-slate-100 text-slate-700': data.status === 'existing',
-                        'px-2 py-1 rounded-full text-xs font-semibold bg-amber-100 text-amber-700': data.status === 'duplicate_in_file'
+                        'px-2 py-1 rounded-full text-xs font-semibold bg-emerald-400/20 text-emerald-200': data.status === 'new',
+                        'px-2 py-1 rounded-full text-xs font-semibold bg-white/20 text-white': data.status === 'existing',
+                        'px-2 py-1 rounded-full text-xs font-semibold bg-amber-400/20 text-amber-200': data.status === 'duplicate_in_file'
                       }"
                     >
-                      {{ data.status.replaceAll('_', ' ') }}
+                      {{ data.status.replace(/_/g, ' ') }}
                     </span>
                   </template>
                 </Column>
               </DataTable>
+            </div>
 
-              <div class="mt-3 flex items-center justify-between">
-                <div class="text-sm text-slate-600">
-                  New to insert: <span class="font-semibold">{{ canInsertCount }}</span>
-                </div>
-                <Button
-                  :disabled="!session.tournament || canInsertCount === 0"
-                  label="Insert New Players"
-                  icon="pi pi-upload"
-                  class="!rounded-xl border-none text-white gbv-grad-blue"
-                  @click="insertNewPlayers"
-                />
+            <div class="flex items-center justify-between">
+              <div class="text-sm text-white/90">
+                New to insert: <span class="font-semibold">{{ canInsertCount }}</span>
               </div>
+              <Button
+                :disabled="!session.tournament || canInsertCount === 0"
+                label="Insert New Players"
+                icon="pi pi-upload"
+                class="!rounded-xl border-none text-white gbv-grad-blue"
+                @click="insertNewPlayers"
+              />
             </div>
           </div>
+        </UiAccordion>
+      </div>
 
-          <!-- Manual add and existing list -->
-          <div class="rounded-xl bg-gbv-bg p-4">
-            <h3 class="text-lg font-semibold text-slate-900">Manual Add / Existing Players</h3>
-
-            <div class="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
+      <!-- Manual Add / Existing Players -->
+      <div>
+        <UiAccordion title="Manual Add / Existing Players" :defaultOpen="true">
+          <div class="grid gap-4">
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
               <div class="sm:col-span-2">
-                <label class="block text-sm font-medium text-slate-700 mb-2">Seeded Player Name</label>
+                <label class="block text-sm mb-2">Seeded Player Name</label>
                 <InputText
                   v-model="manualName"
                   placeholder="e.g. Lukas Kanopka"
-                  class="w-full !rounded-xl !px-4 !py-3"
+                  class="w-full !rounded-xl !px-4 !py-3 !bg-white !text-slate-900"
                 />
               </div>
               <div class="flex">
@@ -411,7 +456,25 @@ onMounted(async () => {
               </div>
             </div>
 
-            <div class="mt-5">
+            <!-- Mobile-first existing players list -->
+            <div class="rounded-lg border border-white/15 overflow-hidden lg:hidden">
+              <div
+                v-for="t in teams"
+                :key="t.id"
+                class="px-4 py-3 border-b border-white/10 last:border-b-0"
+              >
+                <div class="font-medium">{{ t.seeded_player_name }}</div>
+                <div class="text-xs text-white/80">{{ t.full_team_name }}</div>
+                <div class="mt-2 flex gap-2">
+                  <Button label="Edit" size="small" text class="!text-white" @click="openEdit(t)" />
+                  <Button label="Delete" size="small" text severity="danger" @click="deleteTeam(t)" />
+                </div>
+              </div>
+              <div v-if="teams.length === 0" class="px-4 py-3 text-sm text-white/80">No players yet.</div>
+            </div>
+
+            <!-- Desktop DataTable existing players -->
+            <div class="hidden lg:block">
               <DataTable
                 :value="teams"
                 size="small"
@@ -419,13 +482,18 @@ onMounted(async () => {
                 tableClass="!text-sm"
                 :paginator="true"
                 :rows="8"
+                :pt="{
+                  table: { class: 'bg-transparent' },
+                  thead: { class: 'bg-white/10 text-white' },
+                  tbody: { class: 'text-white/90' }
+                }"
               >
-                <Column field="seeded_player_name" header="Seeded Name" />
-                <Column field="full_team_name" header="Full Team Name" />
-                <Column header="Actions" style="width: 12rem">
+                <Column field="seeded_player_name" header="Seeded Name" headerClass="!bg-white/10 !text-white" />
+                <Column field="full_team_name" header="Full Team Name" headerClass="!bg-white/10 !text-white" />
+                <Column header="Actions" style="width: 12rem" headerClass="!bg-white/10 !text-white">
                   <template #body="{ data }">
                     <div class="flex gap-2">
-                      <Button label="Edit" size="small" text @click="openEdit(data)" />
+                      <Button label="Edit" size="small" text class="!text-white" @click="openEdit(data)" />
                       <Button label="Delete" size="small" text severity="danger" @click="deleteTeam(data)" />
                     </div>
                   </template>
@@ -433,33 +501,36 @@ onMounted(async () => {
               </DataTable>
             </div>
 
-            <!-- Simple inline editor -->
+            <!-- Inline editor -->
             <div
               v-if="editDialogOpen"
-              class="mt-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm"
+              class="rounded-lg border border-white/15 bg-white/5 p-4"
             >
-              <div class="text-sm font-semibold text-slate-800">Edit Player</div>
-              <div class="mt-2 grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
+              <div class="text-sm font-semibold">Edit Player</div>
+              <div class="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
                 <div class="sm:col-span-2">
-                  <label class="block text-sm font-medium text-slate-700 mb-2">Seeded Player Name</label>
-                  <InputText v-model="editName" class="w-full !rounded-xl !px-4 !py-3" />
+                  <label class="block text-sm mb-2">Seeded Player Name</label>
+                  <InputText v-model="editName" class="w-full !rounded-xl !px-4 !py-3 !bg-white !text-slate-900" />
                 </div>
                 <div class="flex gap-2">
                   <Button label="Save" class="!rounded-xl border-none text-white gbv-grad-blue" @click="applyEdit" />
-                  <Button label="Cancel" severity="secondary" outlined class="!rounded-xl" @click="editDialogOpen = false" />
+                  <Button label="Cancel" severity="secondary" outlined class="!rounded-xl !border-white/40 !text-white hover:!bg-white/10" @click="editDialogOpen = false" />
                 </div>
               </div>
-              <p class="mt-2 text-xs text-slate-500">
+              <p class="mt-2 text-xs text-white/80">
                 Note: full_team_name mirrors this value until partner assignment.
               </p>
             </div>
           </div>
-        </div>
-
-        <div class="mt-6 text-sm text-slate-600">
-          Tip: Avoid duplicates. The importer de-duplicates within the CSV and skips players already present in the tournament.
-        </div>
+        </UiAccordion>
       </div>
+    </div>
+
+    <div class="mt-6 text-sm text-white/80">
+      Tip: Avoid duplicates. The importer de-duplicates within the CSV and skips players already present in the tournament.
     </div>
   </section>
 </template>
+
+<style scoped>
+</style>

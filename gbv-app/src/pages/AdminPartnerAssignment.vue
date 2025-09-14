@@ -9,6 +9,7 @@ import Column from 'primevue/column';
 import ToggleButton from 'primevue/togglebutton';
 import supabase from '../lib/supabase';
 import { useSessionStore } from '../stores/session';
+import UiSectionHeading from '@/components/ui/UiSectionHeading.vue';
 
 type TeamRow = {
   id: string;
@@ -203,148 +204,197 @@ onMounted(() => {
 </script>
 
 <template>
-  <section class="mx-auto max-w-6xl px-4 pb-10 pt-6">
-    <div class="rounded-2xl border border-slate-200 bg-white shadow-lg">
-      <div class="p-5 sm:p-7">
-        <div class="flex items-center justify-between gap-3">
-          <div>
-            <h2 class="text-2xl font-semibold text-slate-900">Partner Assignment (Hat Draw)</h2>
-            <p class="mt-1 text-slate-600">
-              Tap a seeded player, enter their drawn partner's name. Team name is finalized as "{Seeded} + {Partner}".
-            </p>
-          </div>
-          <Button
-            label="Back"
-            icon="pi pi-arrow-left"
-            severity="secondary"
-            outlined
-            class="!rounded-xl"
-            @click="router.push({ name: 'admin-dashboard' })"
+  <section class="mx-auto max-w-6xl px-4 py-6">
+    <UiSectionHeading
+      title="Partner Assignment (Hat Draw)"
+      subtitle='Tap a seeded player, enter their drawn partner name. Team becomes "{Seeded} + {Partner}".'
+      :divider="true"
+    >
+      
+        <Button
+          label="Back"
+          icon="pi pi-arrow-left"
+          severity="secondary"
+          outlined
+          class="!rounded-xl !border-white/40 !text-white hover:!bg-white/10"
+          @click="router.push({ name: 'admin-dashboard' })"
+        />
+      
+    </UiSectionHeading>
+
+    <!-- Tournament context -->
+    <div class="rounded-lg border border-white/15 bg-white/5 p-4">
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end" v-if="!session.tournament">
+        <div class="sm:col-span-2">
+          <label class="block text-sm mb-2">Tournament Access Code</label>
+          <InputText
+            v-model="accessCode"
+            placeholder="e.g. GATORS2025"
+            class="w-full !rounded-xl !px-4 !py-3 !bg-white !text-slate-900"
           />
         </div>
+        <div class="flex">
+          <Button
+            :loading="loading"
+            label="Load Tournament"
+            icon="pi pi-search"
+            class="!rounded-xl !px-4 !py-3 border-none text-white gbv-grad-blue"
+            @click="loadTournamentByAccessCode"
+          />
+        </div>
+      </div>
+      <div v-else class="flex items-center justify-between">
+        <div class="text-sm">
+          Tournament:
+          <span class="font-semibold">{{ session.tournament.name }}</span>
+          <span class="ml-2 text-white/80">({{ session.accessCode }})</span>
+        </div>
+        <Button
+          label="Change"
+          severity="secondary"
+          text
+          class="!rounded-xl !text-white"
+          icon="pi pi-external-link"
+          @click="changeTournamentCode"
+        />
+      </div>
+    </div>
 
-        <!-- Tournament context -->
-        <div class="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
-          <!-- Loader shown only when no tournament is loaded -->
-          <div class="rounded-xl bg-gbv-bg p-4 sm:col-span-3" v-if="!session.tournament">
-            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
-              <div class="sm:col-span-2">
-                <label class="block text-sm font-medium text-slate-700 mb-2">Tournament Access Code</label>
-                <InputText
-                  v-model="accessCode"
-                  placeholder="e.g. GATORS2025"
-                  class="w-full !rounded-xl !px-4 !py-3"
-                />
-              </div>
-              <div class="flex">
-                <Button
-                  :loading="loading"
-                  label="Load Tournament"
-                  icon="pi pi-search"
-                  class="!rounded-xl !px-4 !py-3 border-none text-white gbv-grad-blue"
-                  @click="loadTournamentByAccessCode"
-                />
+    <!-- Filters -->
+    <div v-if="session.tournament" class="mt-4 rounded-lg border border-white/15 bg-white/5 p-4">
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
+        <div class="sm:col-span-2">
+          <label class="block text-sm mb-2">Search teams or players</label>
+          <InputText
+            v-model="searchText"
+            placeholder="Type to filter by seeded, partner, pool, or team name…"
+            class="w-full !rounded-xl !px-4 !py-3 !bg-white !text-slate-900"
+          />
+        </div>
+        <div class="flex items-center justify-between sm:justify-end gap-4">
+          <div class="text-sm whitespace-nowrap">
+            Assigned:
+            <span class="font-semibold">{{ assignedCount }}</span> / {{ totalCount }}
+            <span class="ml-2 text-white/80">({{ completeness }}%)</span>
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="text-sm">Only Missing</span>
+            <ToggleButton v-model="onlyMissing" onLabel="Yes" offLabel="No" />
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Mobile-first list -->
+    <div v-if="session.tournament" class="mt-6 lg:hidden">
+      <div class="rounded-lg border border-white/15 overflow-hidden">
+        <div
+          v-for="row in displayRows"
+          :key="row.id"
+          class="px-4 py-3 border-b border-white/10 last:border-b-0"
+        >
+          <div class="flex items-center justify-between gap-3">
+            <div class="min-w-0">
+              <div class="text-sm text-white/80">{{ row.pooled_name }}</div>
+              <div class="font-semibold truncate">{{ row.seeded_player_name }}</div>
+              <div class="mt-0.5 text-xs text-white/80 truncate">
+                Team: {{ row.seeded_player_name }} + {{ (partnerInput[row.id] || '').trim() || '—' }}
               </div>
             </div>
           </div>
-          <!-- Subtle chip when tournament is loaded -->
-          <div class="rounded-xl bg-gbv-bg p-4 sm:col-span-3" v-else>
-            <div class="flex items-center justify-between">
-              <div class="text-sm text-slate-700">
-                Tournament:
-                <span class="font-semibold">{{ session.tournament.name }}</span>
-                <span class="ml-2 text-slate-500">({{ session.accessCode }})</span>
-              </div>
+          <div class="mt-2 grid grid-cols-1 sm:grid-cols-3 gap-2 items-center">
+            <div class="sm:col-span-2">
+              <InputText
+                v-model="partnerInput[row.id]"
+                placeholder="Enter partner name"
+                class="w-full !rounded-xl !bg-white !text-slate-900"
+              />
+            </div>
+            <div class="flex justify-end gap-2">
               <Button
-                label="Change"
+                :loading="savingId === row.id"
+                label="Save"
+                icon="pi pi-check"
+                class="!rounded-xl border-none text-white gbv-grad-blue"
+                @click="savePartner(row.id)"
+              />
+              <Button
+                :loading="savingId === row.id"
+                label="Clear"
+                icon="pi pi-times"
                 severity="secondary"
-                text
-                class="!rounded-xl"
-                icon="pi pi-external-link"
-                @click="changeTournamentCode"
+                outlined
+                class="!rounded-xl !border-white/40 !text-white hover:!bg-white/10"
+                @click="clearPartner(row.id)"
               />
             </div>
           </div>
         </div>
-
-        <div v-if="session.tournament" class="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
-          <div class="rounded-xl bg-gbv-bg p-4 sm:col-span-3">
-            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
-              <div class="sm:col-span-2">
-                <label class="block text-sm font-medium text-slate-700 mb-2">Search teams or players</label>
-                <InputText
-                  v-model="searchText"
-                  placeholder="Type to filter by seeded, partner, pool, or team name…"
-                  class="w-full !rounded-xl !px-4 !py-3"
-                />
-              </div>
-              <div class="flex items-center justify-between sm:justify-end gap-4">
-                <div class="text-sm text-slate-700 whitespace-nowrap">
-                  Assigned:
-                  <span class="font-semibold">{{ assignedCount }}</span> / {{ totalCount }}
-                  <span class="ml-2 text-slate-500">({{ completeness }}%)</span>
-                </div>
-                <div class="flex items-center gap-2">
-                  <span class="text-sm text-slate-700">Only Missing</span>
-                  <ToggleButton v-model="onlyMissing" onLabel="Yes" offLabel="No" />
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div v-if="session.tournament" class="mt-6">
-          <DataTable
-            :value="displayRows"
-            size="large"
-            class="rounded-xl overflow-hidden"
-            tableClass="!text-base"
-            :paginator="true"
-            :rows="12"
-          >
-            <Column field="pooled_name" header="Pool/Seed" style="width: 12rem" />
-            <Column field="seeded_player_name" header="Seeded Player" />
-            <Column header="Partner">
-              <template #body="{ data }">
-                <div class="grid grid-cols-1 gap-2 sm:grid-cols-3 items-center">
-                  <div class="sm:col-span-2">
-                    <InputText
-                      v-model="partnerInput[data.id]"
-                      placeholder="Enter partner name"
-                      class="w-full !rounded-xl"
-                    />
-                    <div class="mt-1 text-xs text-slate-500">Team: {{ data.seeded_player_name }} + {{ (partnerInput[data.id] || '').trim() || '—' }}</div>
-                  </div>
-                  <div class="flex justify-end">
-                    <Button
-                      :loading="savingId === data.id"
-                      label="Save"
-                      icon="pi pi-check"
-                      class="!rounded-xl border-none text-white gbv-grad-blue"
-                      @click="savePartner(data.id)"
-                    />
-                  </div>
-                  <div class="flex justify-end">
-                    <Button
-                      :loading="savingId === data.id"
-                      label="Clear"
-                      icon="pi pi-times"
-                      severity="secondary"
-                      outlined
-                      class="!rounded-xl"
-                      @click="clearPartner(data.id)"
-                    />
-                  </div>
-                </div>
-              </template>
-            </Column>
-          </DataTable>
-        </div>
-
-        <div class="mt-6 text-sm text-slate-600">
-          Note: You can clear a partner by saving with an empty partner field. The full team name will revert to the seeded player's name until partner is set.
+        <div v-if="displayRows.length === 0" class="px-4 py-3 text-sm text-white/80">
+          No rows match your filters.
         </div>
       </div>
     </div>
+
+    <!-- Desktop table -->
+    <div v-if="session.tournament" class="mt-6 hidden lg:block">
+      <DataTable
+        :value="displayRows"
+        size="large"
+        class="rounded-xl overflow-hidden"
+        tableClass="!text-base"
+        :paginator="true"
+        :rows="12"
+        :pt="{
+          table: { class: 'bg-transparent' },
+          thead: { class: 'bg-white/10 text-white' },
+          tbody: { class: 'text-white/90' }
+        }"
+      >
+        <Column field="pooled_name" header="Pool/Seed" style="width: 12rem" headerClass="!bg-white/10 !text-white" />
+        <Column field="seeded_player_name" header="Seeded Player" headerClass="!bg-white/10 !text-white" />
+        <Column header="Partner" headerClass="!bg-white/10 !text-white">
+          <template #body="{ data }">
+            <div class="grid grid-cols-1 gap-2 sm:grid-cols-3 items-center">
+              <div class="sm:col-span-2">
+                <InputText
+                  v-model="partnerInput[data.id]"
+                  placeholder="Enter partner name"
+                  class="w-full !rounded-xl !bg-white !text-slate-900"
+                />
+                <div class="mt-1 text-xs text-white/80">
+                  Team: {{ data.seeded_player_name }} + {{ (partnerInput[data.id] || '').trim() || '—' }}
+                </div>
+              </div>
+              <div class="flex justify-end gap-2">
+                <Button
+                  :loading="savingId === data.id"
+                  label="Save"
+                  icon="pi pi-check"
+                  class="!rounded-xl border-none text-white gbv-grad-blue"
+                  @click="savePartner(data.id)"
+                />
+                <Button
+                  :loading="savingId === data.id"
+                  label="Clear"
+                  icon="pi pi-times"
+                  severity="secondary"
+                  outlined
+                  class="!rounded-xl !border-white/40 !text-white hover:!bg-white/10"
+                  @click="clearPartner(data.id)"
+                />
+              </div>
+            </div>
+          </template>
+        </Column>
+      </DataTable>
+    </div>
+
+    <div class="mt-6 text-sm text-white/80">
+      Note: You can clear a partner by saving with an empty partner field. The full team name will revert to the seeded player's name until partner is set.
+    </div>
   </section>
 </template>
+
+<style scoped>
+</style>
