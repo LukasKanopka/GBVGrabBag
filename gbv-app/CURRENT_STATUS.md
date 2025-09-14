@@ -31,7 +31,7 @@ Source of truth: Product Requirements at [PRD.md](PRD.md)
 
 ## MVP Decisions and Assumptions
 - Players CSV: single column with header seeded_player_name, UTF-8
-- Pool sizes supported for templates/generation: 3, 4, 5
+- Pool sizes supported for templates/generation: 4, 5
 - Bracket formats: single_elimination and best_of_3_single_elim (finals)
 - Tiebreakers priority: head_to_head, set_ratio, point_diff, random
 
@@ -79,7 +79,7 @@ Source of truth: Product Requirements at [PRD.md](PRD.md)
 ### Phase D — Bracket Play
 7. Bracket Engine (src/lib/bracket.ts)
    - computePoolStandings(tournamentId)
-   - seedAdvancers(advancementRules, standings) for pool sizes 3, 4, 5
+   - seedAdvancers(advancementRules, standings) for pool sizes 4, 5
    - generateBracket(tournamentId): create matches with match_type bracket, bracket_round; set tournaments.bracket_started true and bracket_generated_at, status bracket
    - rebuildBracket(tournamentId): allowed only when bracket_started false; else block with message
    - Support final series best_of_3 by creating multiple final matches and resolving series winner

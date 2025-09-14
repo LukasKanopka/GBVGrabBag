@@ -7,12 +7,6 @@ import Button from 'primevue/button';
 import { useToast } from 'primevue/usetoast';
 import supabase from '../lib/supabase';
 
-type Pool = {
-  id: string;
-  tournament_id: string;
-  name: string;
-  court_assignment: string | null;
-};
 
 const toast = useToast();
 const route = useRoute();
@@ -22,25 +16,7 @@ const session = useSessionStore();
 const accessCodeParam = ref<string>((route.params.accessCode as string) ?? '');
 const accessCodeInput = ref<string>('');
 const loading = ref(false);
-const pools = ref<Pool[]>([]);
 
-async function loadPools() {
-  if (!session.tournament) {
-    pools.value = [];
-    return;
-  }
-  const { data, error } = await supabase
-    .from('pools')
-    .select('*')
-    .eq('tournament_id', session.tournament.id)
-    .order('name', { ascending: true });
-  if (error) {
-    toast.add({ severity: 'error', summary: 'Failed to load pools', detail: error.message, life: 3000 });
-    pools.value = [];
-    return;
-  }
-  pools.value = data as Pool[];
-}
 
 async function refreshTournament(code: string) {
   loading.value = true;
@@ -48,12 +24,11 @@ async function refreshTournament(code: string) {
     await session.ensureAnon();
     const t = await session.loadTournamentByCode(code);
     if (!t) {
-      toast.add({ severity: 'warn', summary: 'Not found', detail: 'Invalid tournament code', life: 2500 });
-      pools.value = [];
+      session.clearAccessCode();
+      toast.add({ severity: 'error', summary: 'Tournament does not exist', detail: '', life: 3000 });
+      router.replace({ name: 'tournament-public' });
       return;
     }
-    // Load pools for potential fallback UI
-    await loadPools();
 
     // Redirect based on tournament status to nested flow
     if (t.status === 'pool_play') {
@@ -85,15 +60,30 @@ onMounted(async () => {
 async function saveCode() {
   if (!accessCodeInput.value.trim()) return;
   const code = accessCodeInput.value.trim();
-  session.setAccessCode(code);
-  toast.add({ severity: 'success', summary: 'Code Saved', detail: code, life: 2000 });
-  await refreshTournament(code);
-  router.push({ name: 'tournament-public', params: { accessCode: code } });
+  loading.value = true;
+  try {
+    await session.ensureAnon();
+    const t = await session.loadTournamentByCode(code);
+    if (!t) {
+      toast.add({ severity: 'error', summary: 'Tournament does not exist', life: 3000 });
+      return;
+    }
+    session.setAccessCode(code);
+    toast.add({ severity: 'success', summary: 'Code Saved', detail: code, life: 2000 });
+    if (t.status === 'pool_play') {
+      router.replace({ name: 'public-pool-list', params: { accessCode: code } });
+    } else if (t.status === 'bracket') {
+      router.replace({ name: 'public-bracket', params: { accessCode: code } });
+    } else {
+      router.replace({ name: 'tournament-public', params: { accessCode: code } });
+    }
+  } finally {
+    loading.value = false;
+  }
 }
 
 async function changeCode() {
   session.clearAccessCode();
-  pools.value = [];
   toast.add({ severity: 'info', summary: 'Access code cleared', life: 1500 });
   router.replace({ name: 'tournament-public' });
 }

@@ -40,6 +40,35 @@ body {
   background-image: linear-gradient(135deg, #1b6a08 0%, #29820c 100%);
 }
 
+/* Custom PrimeVue Toast Styles */
+.p-toast {
+  min-width: 350px; /* Larger width */
+}
+
+.p-toast .p-toast-message {
+  background: white !important; /* Solid white for entire message */
+  padding: 1.5rem; /* Larger padding */
+  font-size: 1.1rem; /* Larger text */
+  border: 1px solid #e5e7eb !important; /* Subtle border for entire toast */
+  border-radius: 0.5rem !important; /* Rounded corners */
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06) !important; /* Shadow for visibility */
+}
+
+.p-toast .p-toast-message .p-toast-message-content {
+  background: transparent !important; /* Ensure inner is transparent to inherit outer white */
+}
+
+.p-toast .p-toast-message .p-toast-message-content .p-toast-summary {
+  font-weight: bold;
+  font-size: 1.2rem;
+}
+
+.p-toast .p-toast-message .p-toast-message-content .p-toast-detail {
+  margin-top: 0.5rem;
+}
+
+/* Icons and close button use default colors */
+
 .gbv-grad-blue {
   background-image: linear-gradient(135deg, #244695 0%, #2d51a6 100%);
 }
