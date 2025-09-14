@@ -48,7 +48,7 @@ const navItems: NavItem[] = [
   {
     to: { name: 'admin-schedule-templates' },
     title: 'Schedule Templates',
-    desc: 'Define templates for 3–5 team pools.',
+    desc: 'Define templates for 4–5 team pools.',
     icon: 'pi-table',
   },
   {

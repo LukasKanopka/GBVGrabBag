@@ -81,6 +81,23 @@ const moveOptions = computed(() => {
   ];
 });
 
+/**
+ * Migration assistance: flag pools that are not size 4 or 5.
+ */
+const teamCountsByPool = computed(() => {
+  const m = new Map<string, number>();
+  for (const t of teams.value) {
+    if (t.pool_id) m.set(t.pool_id, (m.get(t.pool_id) ?? 0) + 1);
+  }
+  return m;
+});
+
+const invalidPools = computed(() => {
+  return pools.value
+    .map((p) => ({ pool: p, size: teamCountsByPool.value.get(p.id) ?? 0 }))
+    .filter((x) => x.size !== 0 && x.size !== 4 && x.size !== 5);
+});
+
 // Loaders
 async function loadTournamentByAccessCode() {
   if (!accessCode.value?.trim()) {
@@ -304,6 +321,19 @@ async function setSeed(teamId: string, seedStr: string) {
         <span class="font-semibold">{{ session.tournament.name }}</span>
         <span class="ml-2 text-white/80">({{ session.accessCode }})</span>
       </div>
+    </div>
+
+    <!-- Migration assistance: warn about unsupported pool sizes -->
+    <div
+      v-if="invalidPools.length > 0"
+      class="mt-4 rounded-lg border border-amber-300 bg-amber-400/10 p-4 text-amber-100 text-sm"
+    >
+      <div class="font-semibold mb-1">Unsupported pool sizes detected</div>
+      <ul class="list-disc list-inside">
+        <li v-for="ip in invalidPools" :key="ip.pool.id">
+          {{ ip.pool.name }} has {{ ip.size }} team(s). Adjust to 4 or 5 before generating the schedule.
+        </li>
+      </ul>
     </div>
 
     <div v-if="session.tournament" class="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-3">

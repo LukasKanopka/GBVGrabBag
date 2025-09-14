@@ -10,6 +10,7 @@ import Column from 'primevue/column';
 import InputNumber from 'primevue/inputnumber';
 import ToggleButton from 'primevue/togglebutton';
 import supabase from '../lib/supabase';
+import { defaultTemplateForPoolSize } from '../lib/defaultTemplates';
 import UiSectionHeading from '@/components/ui/UiSectionHeading.vue';
 import type { Tournament, TournamentStatus, AdvancementRules, GameRules } from '../types/db';
 
@@ -44,7 +45,6 @@ const statusOptions: { label: string; value: TournamentStatus }[] = [
 // Defaults per Bundle C
 const DEFAULT_ADV_RULES: AdvancementRules = {
   pools: [
-    { fromPoolSize: 3, advanceCount: 2 },
     { fromPoolSize: 4, advanceCount: 2 },
     { fromPoolSize: 5, advanceCount: 2 },
   ],
@@ -164,7 +164,7 @@ type Tiebreaker = 'head_to_head' | 'set_ratio' | 'point_diff' | 'random';
 function formatTb(tb: Tiebreaker): string { return String(tb).replace(/_/g, ' '); }
 
 function ensurePoolsConfig(rules: AdvancementRules) {
-  const sizes = [3, 4, 5];
+  const sizes = [4, 5];
   if (!Array.isArray(rules.pools)) rules.pools = [];
   for (const s of sizes) {
     const existing = rules.pools!.find((p) => p.fromPoolSize === s);
@@ -283,7 +283,31 @@ async function saveTournament() {
       if (error) throw error;
       toast.add({ severity: 'success', summary: 'Tournament created', life: 1500 });
       if (data) {
-        selectedId.value = (data as Tournament).id;
+        const newId = (data as Tournament).id;
+        selectedId.value = newId;
+
+        // Auto-seed default schedule templates for 4- and 5-team pools if missing
+        try {
+          const sizesToSeed = [4, 5];
+          const payloads = sizesToSeed
+            .map((sz) => ({
+              tournament_id: newId,
+              pool_size: sz,
+              template_data: defaultTemplateForPoolSize(sz),
+            }))
+            .filter((p) => Array.isArray(p.template_data) && p.template_data.length > 0);
+
+          if (payloads.length > 0) {
+            await Promise.all(
+              payloads.map((p) =>
+                supabase.from('schedule_templates').upsert(p, { onConflict: 'tournament_id,pool_size' })
+              )
+            );
+          }
+        } catch (seedErr) {
+          // Non-blocking: seeding failure will be handled again in prerequisites
+          console.warn('Default schedule template seeding failed:', seedErr);
+        }
       }
     }
     await loadTournaments();
@@ -421,16 +445,6 @@ onMounted(async () => {
               <div class="rounded-lg border border-white/15 bg-white/5 p-3">
                 <div class="text-sm font-medium">Advancers per Pool Size</div>
                 <div class="mt-2 grid grid-cols-1 gap-3">
-                  <div class="flex items-center justify-between gap-3">
-                    <div class="text-sm text-white/80">3 teams</div>
-                    <Dropdown
-                      :options="[0,1,2,3]"
-                      :modelValue="getAdvanceCount(3)"
-                      @update:modelValue="(v:any) => setAdvanceCount(3, v)"
-                      class="!rounded-xl w-32"
-                      :pt="{ input: { class: '!py-2 !px-3 !text-sm !rounded-xl' } }"
-                    />
-                  </div>
                   <div class="flex items-center justify-between gap-3">
                     <div class="text-sm text-white/80">4 teams</div>
                     <Dropdown

@@ -253,7 +253,7 @@ async function runGenerate() {
     </div>
 
     <div class="mt-6 text-sm text-white/80">
-      Note: Generation uses admin-defined templates per pool size. Only pool sizes 3–5 are supported. Ensure all seeded players have partners and templates exist for each size in use.
+      Note: Generation uses admin-defined templates per pool size. Only pool sizes 4–5 are supported. Ensure all seeded players have partners and templates exist for each size in use.
     </div>
   </section>
 </template>

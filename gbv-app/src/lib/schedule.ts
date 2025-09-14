@@ -1,5 +1,6 @@
 import supabase from './supabase';
 import type { ScheduleTemplateRound } from '../types/db';
+import { defaultTemplateForPoolSize } from './defaultTemplates';
 
 type TeamRec = {
   id: string;
@@ -58,14 +59,14 @@ export async function checkPrerequisites(tournamentId: string): Promise<{ ok: bo
 
   const sizesNeeded = Array.from(new Set(Array.from(poolSizeToCount.values()))).sort((a, b) => a - b);
 
-  // Enforce supported pool sizes (3–5)
-  const allowedSizes = new Set<number>([3, 4, 5]);
+  // Enforce supported pool sizes (4–5)
+  const allowedSizes = new Set<number>([4, 5]);
   const invalidSizes = sizesNeeded.filter((sz) => !allowedSizes.has(sz));
   for (const sz of invalidSizes) {
-    errors.push(`Unsupported pool size ${sz}. Only 3–5 are supported.`);
+    errors.push(`Unsupported pool size ${sz}. Only 4–5 are supported.`);
   }
 
-  // Check templates for supported sizes only
+  // Ensure templates exist or auto-seed for supported sizes
   for (const sz of sizesNeeded.filter((s) => allowedSizes.has(s))) {
     const { data: tmpl, error: tmplErr } = await supabase
       .from('schedule_templates')
@@ -74,8 +75,26 @@ export async function checkPrerequisites(tournamentId: string): Promise<{ ok: bo
       .eq('pool_size', sz)
       .maybeSingle();
 
+    // Auto-seed if missing
     if (tmplErr || !tmpl) {
-      errors.push(`Missing schedule template for pool size ${sz}.`);
+      const defaults = defaultTemplateForPoolSize(sz);
+      if (defaults.length > 0) {
+        const { error: upErr } = await supabase
+          .from('schedule_templates')
+          .upsert(
+            {
+              tournament_id: tournamentId,
+              pool_size: sz,
+              template_data: defaults,
+            },
+            { onConflict: 'tournament_id,pool_size' }
+          );
+        if (upErr) {
+          errors.push(`Missing schedule template for pool size ${sz} and failed to auto-create: ${upErr.message}`);
+        }
+      } else {
+        errors.push(`Missing schedule template for pool size ${sz}.`);
+      }
     }
   }
 

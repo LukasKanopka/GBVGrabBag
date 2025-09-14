@@ -24,8 +24,8 @@ const session = useSessionStore();
 const accessCode = ref<string>(session.accessCode ?? '');
 const selectedPoolSize = ref<number | null>(null);
 
-// Limit pool sizes to 3–5 per requirements
-const poolSizeOptions = [3, 4, 5].map((n) => ({ label: `${n} teams`, value: n }));
+// Limit pool sizes to 4–5 per requirements
+const poolSizeOptions = [4, 5].map((n) => ({ label: `${n} teams`, value: n }));
 
 const rounds = ref<RoundRow[]>([]);
 
@@ -292,7 +292,7 @@ onMounted(async () => {
           :pt="{ input: { class: '!py-3 !px-4 !text-base !rounded-xl' } }"
         />
         <p class="mt-2 text-xs text-white/80">
-          Supported sizes: 3–5 teams.
+          Supported sizes: 4–5 teams.
         </p>
       </div>
 
