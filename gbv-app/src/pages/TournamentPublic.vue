@@ -142,6 +142,10 @@ async function changeCode() {
           <p class="mt-3 text-white/90 text-sm">
             Access code is provided by the president.
           </p>
+          <div class="mt-3 text-center text-sm text-white/90">
+            Admin? Go to
+            <router-link class="underline" :to="{ name: 'admin-login' }">Admin Login</router-link>
+          </div>
         </div>
       </div>
     </div>

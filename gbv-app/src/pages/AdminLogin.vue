@@ -31,9 +31,21 @@ async function signIn(e: Event) {
 
 <template>
   <section class="min-h-dvh w-full">
-    <div class="min-h-dvh w-full flex items-center justify-center px-4 py-12 gbv-blue">
+    <div class="min-h-dvh w-full flex items-center justify-center px-4 py-6 gbv-blue">
       <div class="w-full max-w-xl">
         <div class="text-center">
+          <div class="flex flex-col items-center mb-8">
+            <img
+              src="@/assets/GBVLogo.png"
+              alt="GBV Logo"
+              class="w-[68vw] sm:w-[60vw] md:w-[48vw] max-w-[512px] h-auto max-h-[32vh] drop-shadow-xl"
+            />
+            <img
+              src="@/assets/GatorBeachVolleyball.png"
+              alt="Gator Beach Volleyball"
+              class="w-[68vw] sm:w-[60vw] md:w-[48vw] max-w-[512px] h-auto mt-4 drop-shadow-xl"
+            />
+          </div>
           <h1 class="text-white text-3xl sm:text-4xl font-extrabold drop-shadow-md">
             Admin Console
           </h1>
@@ -42,30 +54,31 @@ async function signIn(e: Event) {
           </p>
         </div>
 
-        <div class="mt-8 rounded-2xl bg-white/95 p-5 sm:p-7 shadow-2xl ring-1 ring-black/5">
+        <div class="mt-8 rounded-2xl bg-white/10 p-4 sm:p-6 backdrop-blur-md ring-1 ring-white/20">
           <form @submit="signIn" class="space-y-5">
             <div v-if="errorMsg" class="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
               {{ errorMsg }}
             </div>
 
             <div class="space-y-2">
-              <label class="text-sm font-medium text-slate-700">Email</label>
+              <label class="text-sm font-semibold text-white">Email</label>
               <InputText
                 v-model="email"
                 type="email"
                 placeholder="admin@example.com"
-                class="w-full !rounded-xl !px-4 !py-3 !text-base"
+                class="w-full !rounded-xl !px-4 !py-3 !text-base bg-white/95"
                 required
               />
             </div>
 
             <div class="space-y-2">
-              <label class="text-sm font-medium text-slate-700">Password</label>
+              <label class="text-sm font-semibold text-white">Password</label>
               <Password
                 v-model="password"
                 :feedback="false"
                 toggleMask
-                inputClass="!w-full !rounded-xl !px-4 !py-3 !text-base"
+                class="w-full"
+                inputClass="!rounded-xl !px-4 !py-3 !text-base bg-white/95"
                 placeholder="••••••••"
                 required
               />
@@ -80,9 +93,9 @@ async function signIn(e: Event) {
             />
           </form>
 
-          <div class="mt-6 text-center text-sm text-slate-600">
+          <div class="mt-6 text-center text-sm text-white/90">
             Public site:
-            <router-link class="text-gbv-blue underline" :to="{ name: 'tournament-public' }">Tournament</router-link>
+            <router-link class="underline hover:text-white" :to="{ name: 'tournament-public' }">Tournament</router-link>
           </div>
         </div>
       </div>
