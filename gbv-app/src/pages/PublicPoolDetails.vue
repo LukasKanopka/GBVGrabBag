@@ -175,15 +175,19 @@ function computeStandings() {
     const s1 = m.team1_score ?? 0;
     const s2 = m.team2_score ?? 0;
 
+    // Determine outcome by scores; fallback to winner_id if needed
+    const t1Won = s1 > s2 || (s1 === s2 ? m.winner_id === t1 : false);
+    const t2Won = s2 > s1 || (s1 === s2 ? m.winner_id === t2 : false);
+
     if (base[t1]) {
       base[t1].played += 1;
       base[t1].pointsFor += s1;
       base[t1].pointsAgainst += s2;
       base[t1].pointDiff += (s1 - s2);
-      if (m.winner_id === t1) {
+      if (t1Won) {
         base[t1].wins += 1;
         base[t1].setWon += 1;
-      } else {
+      } else if (t2Won) {
         base[t1].losses += 1;
         base[t1].setLost += 1;
       }
@@ -193,10 +197,10 @@ function computeStandings() {
       base[t2].pointsFor += s2;
       base[t2].pointsAgainst += s1;
       base[t2].pointDiff += (s2 - s1);
-      if (m.winner_id === t2) {
+      if (t2Won) {
         base[t2].wins += 1;
         base[t2].setWon += 1;
-      } else {
+      } else if (t1Won) {
         base[t2].losses += 1;
         base[t2].setLost += 1;
       }

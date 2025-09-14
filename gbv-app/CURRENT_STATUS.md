@@ -9,7 +9,7 @@ Source of truth: Product Requirements at [PRD.md](PRD.md)
 - Schedule template management UI in [src/pages/AdminScheduleTemplates.vue](src/pages/AdminScheduleTemplates.vue)
 - Pool schedule generation and prerequisites checks implemented in [checkPrerequisites()](src/lib/schedule.ts:37) and [generateSchedule()](src/lib/schedule.ts:104)
 - Public tournament hub in [src/pages/TournamentPublic.vue](src/pages/TournamentPublic.vue)
-- Live scoreboard with realtime updates in [src/pages/LiveScoreboard.vue](src/pages/LiveScoreboard.vue)
+- Live scoreboard capability implemented but disabled in public UI (deferred) in [src/pages/LiveScoreboard.vue](src/pages/LiveScoreboard.vue)
 - Score entry for completed matches in [src/pages/ScoreEntry.vue](src/pages/ScoreEntry.vue)
 - Admin authentication guard in [src/router/index.ts](src/router/index.ts)
 - Admin tournament setup CRUD in [src/pages/AdminTournamentSetup.vue](src/pages/AdminTournamentSetup.vue) with routes wired in [src/router/index.ts](src/router/index.ts)
@@ -22,7 +22,7 @@ Source of truth: Product Requirements at [PRD.md](PRD.md)
 - Bracket Engine (Policy A: top-2 advance per pool, byes to top seeds, bracket size 2/4/8) implemented in [computePoolStandings()](src/lib/bracket.ts:73), [seedAdvancers()](src/lib/bracket.ts:232), [generateBracket()](src/lib/bracket.ts:315), [rebuildBracket()](src/lib/bracket.ts:473)
 - Public Bracket view implemented in [src/pages/PublicBracket.vue](src/pages/PublicBracket.vue)
 - Admin Bracket UI with Generate/Rebuild/Manual Mode implemented in [src/pages/AdminBracket.vue](src/pages/AdminBracket.vue) and routed in [src/router/index.ts](src/router/index.ts)
-- Bracket lifecycle: bracket_started flips on first bracket activity (live or scored) via [LiveScoreboardMatch.vue](src/pages/LiveScoreboardMatch.vue:144) and [ScoreEntryMatch.vue](src/pages/ScoreEntryMatch.vue:120)
+- Bracket lifecycle: bracket_started flips on first bracket activity (score submitted; live UI deferred) via [ScoreEntryMatch.vue](src/pages/ScoreEntryMatch.vue:120)
 
 ### In Progress
 - Planning and tracking document (this file)
@@ -70,11 +70,10 @@ Source of truth: Product Requirements at [PRD.md](PRD.md)
 5. Public Nested Pool Play UX
    - Landing after access: if [Tournament.status](src/types/db.ts:52) = pool_play => show Pools list; if = bracket => show Bracket
    - Pools list page links to Pool details
-   - Pool details: standings on top computed per [AdvancementRules](src/types/db.ts) tiebreakers; schedule below ordered by round_number; display ref team and red LIVE marker when [Match.is_live](src/types/db.ts:99) is true
-   - Match actions: after tapping a match, present two options:
-     - Live Score Recording with Scoreboard (disabled when is_live true)
-     - Enter Score Manually (always available)
-   - Acceptance: Users navigate via Pools -> Pool -> Match -> Action; standings update reactively on score changes; live marker visible and exclusive live scoring enforced by is_live flag.
+   - Pool details: standings on top computed per [AdvancementRules](src/types/db.ts) tiebreakers; schedule below ordered by round_number; display ref team.
+   - Match actions: after tapping a match, present one option:
+     - Enter Score Manually (live score recording is deferred and hidden)
+   - Acceptance: Users navigate via Pools -> Pool -> Match -> Action; standings update reactively on score changes.
 
 6. Post-bracket edit warning
    - In [submitScore()](src/pages/ScoreEntry.vue:82) show non-blocking toast when bracket exists or status is bracket
@@ -114,7 +113,7 @@ Source of truth: Product Requirements at [PRD.md](PRD.md)
 
 ## Roles and Access
 - Admin-only pages: protected by router meta requiresAdmin in [src/router/index.ts](src/router/index.ts)
-- Public: score entry and live scoreboard require ensureAnon session in [src/stores/session.ts](src/stores/session.ts)
+- Public: score entry requires ensureAnon session in [src/stores/session.ts](src/stores/session.ts). Live scoreboard is disabled (deferred).
 
 ## Risks and Mitigations
 - RLS Write Access: score and admin writes depend on authenticated role; ensure [ensureAnon()](src/stores/session.ts:54) runs before write flows
@@ -129,7 +128,7 @@ Source of truth: Product Requirements at [PRD.md](PRD.md)
 ## Useful Links
 - Public Tournament: [src/pages/TournamentPublic.vue](src/pages/TournamentPublic.vue)
 - Score Entry: [src/pages/ScoreEntry.vue](src/pages/ScoreEntry.vue)
-- Live Scoreboard: [src/pages/LiveScoreboard.vue](src/pages/LiveScoreboard.vue)
+- Live Scoreboard (deferred): [src/pages/LiveScoreboard.vue](src/pages/LiveScoreboard.vue)
 - Admin Dashboard: [src/pages/AdminDashboard.vue](src/pages/AdminDashboard.vue)
 - Admin Tournament Setup: [src/pages/AdminTournamentSetup.vue](src/pages/AdminTournamentSetup.vue)
 - Admin Schedule Templates: [src/pages/AdminScheduleTemplates.vue](src/pages/AdminScheduleTemplates.vue)
@@ -174,7 +173,7 @@ flowchart TD
   D --> E[Schedule below]
   E --> F[Tap match]
   F --> G[Choose action]
-  G --> H[Live scoreboard]
+  G --> H[Live scoreboard (deferred)]
   G --> I[Enter score manually]
   B -- bracket --> J[Bracket view]
 ```

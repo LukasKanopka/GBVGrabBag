@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue';
-import { useRoute } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import { useSessionStore } from '../stores/session';
 import Dropdown from 'primevue/dropdown';
 import InputNumber from 'primevue/inputnumber';
@@ -24,13 +24,22 @@ type MatchRow = {
 const toast = useToast();
 const route = useRoute();
 const session = useSessionStore();
+const router = useRouter();
 
 const accessCode = computed(() => (route.params.accessCode as string) ?? session.accessCode ?? '');
 const loading = ref(false);
 
 const teamNameById = ref<Record<string, string>>({});
-const matches = ref<{ id: string; label: string; team1_id: string | null; team2_id: string | null }[]>([]);
-const selectedMatch = ref<{ id: string; label: string; team1_id: string | null; team2_id: string | null } | null>(null);
+type MatchOption = {
+  id: string;
+  label: string;
+  team1_id: string | null;
+  team2_id: string | null;
+  pool_id: string | null;
+  match_type: 'pool' | 'bracket';
+};
+const matches = ref<MatchOption[]>([]);
+const selectedMatch = ref<MatchOption | null>(null);
 const team1Score = ref<number | null>(null);
 const team2Score = ref<number | null>(null);
 
@@ -75,7 +84,7 @@ async function loadMatches() {
   }
   const rows = (data as MatchRow[]).map((m) => {
     const label = `${m.match_type === 'bracket' ? 'Bracket' : 'Pool'}${m.round_number ? ` R${m.round_number}` : ''}: ${nameFor(m.team1_id)} vs ${nameFor(m.team2_id)}`;
-    return { id: m.id, label, team1_id: m.team1_id, team2_id: m.team2_id };
+    return { id: m.id, label, team1_id: m.team1_id, team2_id: m.team2_id, pool_id: m.pool_id, match_type: m.match_type };
   });
   matches.value = rows;
 }
@@ -91,6 +100,10 @@ async function submitScore() {
     else if (t2 > t1) winner_id = team2_id;
   }
 
+  if (!session.tournament) {
+    toast.add({ severity: 'error', summary: 'Submit failed', detail: 'Missing tournament context', life: 3000 });
+    return;
+  }
   const { error } = await supabase
     .from('matches')
     .update({
@@ -102,16 +115,29 @@ async function submitScore() {
       live_score_team2: null,
     })
     .eq('id', id);
+
   if (error) {
     toast.add({ severity: 'error', summary: 'Submit failed', detail: error.message, life: 3000 });
     return;
   }
+
   toast.add({ severity: 'success', summary: 'Score submitted', life: 1500 });
-  // reset UI
-  team1Score.value = null;
-  team2Score.value = null;
-  selectedMatch.value = null;
-  await loadMatches();
+
+  // If this was a bracket match, ensure the tournament is marked as started (first activity)
+  if (selectedMatch.value?.match_type === 'bracket' && session.tournament) {
+    await supabase
+      .from('tournaments')
+      .update({ bracket_started: true })
+      .eq('id', session.tournament.id)
+      .eq('bracket_started', false);
+  }
+
+  // Navigate to pool standings if pool match; else back to the match actions page
+  if (selectedMatch.value?.match_type === 'pool' && selectedMatch.value?.pool_id) {
+    router.push({ name: 'public-pool-details', params: { accessCode: accessCode.value, poolId: selectedMatch.value.pool_id } });
+  } else {
+    router.push({ name: 'match-actions', params: { accessCode: accessCode.value, matchId: id } });
+  }
 }
 
 onMounted(async () => {

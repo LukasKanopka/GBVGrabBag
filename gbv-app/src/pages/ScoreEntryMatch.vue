@@ -118,6 +118,11 @@ async function submitScore() {
     else if (t2 > t1) winner_id = team2_id;
   }
 
+  if (!session.tournament) {
+    toast.add({ severity: 'error', summary: 'Submit failed', detail: 'Missing tournament context', life: 3000 });
+    return;
+  }
+
   const { error } = await supabase
     .from('matches')
     .update({
@@ -145,8 +150,12 @@ async function submitScore() {
   }
 
   toast.add({ severity: 'success', summary: 'Score submitted', life: 1800 });
-  // Navigate back to match actions
-  router.push({ name: 'match-actions', params: { accessCode: accessCode.value, matchId: id } });
+  // Navigate to pool standings if this was a pool match; else back to match actions
+  if (match.value?.match_type === 'pool' && match.value?.pool_id) {
+    router.push({ name: 'public-pool-details', params: { accessCode: accessCode.value, poolId: match.value.pool_id } });
+  } else {
+    router.push({ name: 'match-actions', params: { accessCode: accessCode.value, matchId: id } });
+  }
 }
 
 function backToMatch() {
@@ -178,7 +187,7 @@ onMounted(async () => {
         <div v-if="loading" class="text-sm text-white/80">Loading…</div>
       </div>
       <p class="mt-1 text-white/80">
-        Submit final scores for this match. This will clear any live scoreboard session.
+        Submit final scores for this match.
       </p>
 
       <div v-if="match" class="mt-4 rounded-xl bg-white/10 ring-1 ring-white/20 p-4 text-white">
