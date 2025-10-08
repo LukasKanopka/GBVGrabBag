@@ -176,7 +176,7 @@ async function doRebuild() {
     toast.add({ severity: 'warn', summary: 'Load a tournament first', life: 1500 });
     return;
   }
-  const confirmed = confirm('Rebuild bracket? This will delete current bracket matches. Allowed only if bracket has not started.');
+  const confirmed = confirm('Rebuild bracket? This will delete all existing bracket matches and scores. This cannot be undone. Continue?');
   if (!confirmed) return;
   running.value = true;
   try {

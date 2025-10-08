@@ -5,7 +5,7 @@ import { useSessionStore } from '../stores/session';
 import { useToast } from 'primevue/usetoast';
 import supabase from '../lib/supabase';
 import PublicLayout from '../components/layout/PublicLayout.vue';
-import BracketView from '../components/BracketView.vue';
+import Bracket from 'vue-tournament-bracket';
 
 type UUID = string;
 
@@ -21,6 +21,7 @@ type Match = {
   is_live: boolean;
   live_score_team1: number | null;
   live_score_team2: number | null;
+  winner_id: UUID | null;
   match_type: 'pool' | 'bracket';
   bracket_round: number | null;
   bracket_match_index: number | null;
@@ -74,6 +75,71 @@ function groupedByRound() {
   ] as const);
 }
 
+const bracketData = computed(() => {
+  // group by round
+  const byRound = new Map<number, Match[]>();
+  for (const m of matches.value) {
+    const r = m.bracket_round || 1;
+    const arr = byRound.get(r) ?? [];
+    arr.push(m);
+    byRound.set(r, arr);
+  }
+
+  const roundsSorted = Array.from(byRound.entries()).sort((a, b) => a[0] - b[0]);
+
+  return roundsSorted.map(([r, arr]) => {
+    const games = arr
+      .slice()
+      .sort((a, b) => {
+        const ai = a.bracket_match_index ?? Number.MAX_SAFE_INTEGER;
+        const bi = b.bracket_match_index ?? Number.MAX_SAFE_INTEGER;
+        if (ai !== bi) return ai - bi;
+        return a.id.localeCompare(b.id);
+      })
+      .map((m) => {
+        const winId = (m as any).winner_id as string | null | undefined;
+        const p1Id = m.team1_id;
+        const p2Id = m.team2_id;
+        const bothPresent = !!p1Id && !!p2Id;
+
+        // winner flag rules:
+        // - if winner_id exists, set true/false accordingly
+        // - if one side is BYE and no winner_id, favor the non-BYE side
+        // - if both present and no winner yet, set null (neutral)
+        const p1Winner =
+          p1Id
+            ? (winId != null
+                ? winId === p1Id
+                : (bothPresent ? null : (!!p1Id && !p2Id ? true : null)))
+            : false;
+
+        const p2Winner =
+          p2Id
+            ? (winId != null
+                ? winId === p2Id
+                : (bothPresent ? null : (!!p2Id && !p1Id ? true : null)))
+            : false;
+
+        return {
+          // carry through a stable identifier so we can open the match
+          id: m.id,
+          player1: {
+            id: p1Id ?? `bye-${m.id}-1`,
+            name: p1Id ? nameFor(p1Id) : 'BYE',
+            winner: p1Winner,
+          },
+          player2: {
+            id: p2Id ?? `bye-${m.id}-2`,
+            name: p2Id ? nameFor(p2Id) : 'BYE',
+            winner: p2Winner,
+          },
+        };
+      });
+
+    return { games };
+  });
+});
+
 async function ensureTournament() {
   if (!accessCode.value) return;
   await session.ensureAnon();
@@ -107,7 +173,7 @@ async function loadMatches() {
   }
   const { data, error } = await supabase
     .from('matches')
-    .select('id,tournament_id,pool_id,round_number,team1_id,team2_id,is_live,live_score_team1,live_score_team2,match_type,bracket_round,bracket_match_index')
+    .select('id,tournament_id,pool_id,round_number,team1_id,team2_id,is_live,live_score_team1,live_score_team2,winner_id,match_type,bracket_round,bracket_match_index')
     .eq('tournament_id', session.tournament.id)
     .eq('match_type', 'bracket')
     .order('bracket_round', { ascending: true })
@@ -198,11 +264,20 @@ onBeforeUnmount(async () => {
         </div>
 
         <div v-else class="mt-6">
-          <BracketView
-            :matches="matches"
-            :teamNameById="teamNameById"
-            @open="openMatchById"
-          />
+          <Bracket :rounds="bracketData">
+            <template #player="{ player }">
+              <div class="text-sm font-semibold text-white">
+                {{ player.name }}
+              </div>
+            </template>
+            <template #player-extension-bottom="{ match }">
+              <div class="mt-1">
+                <button class="underline text-white/80 text-xs" @click="openMatchById(match.id)">
+                  View match
+                </button>
+              </div>
+            </template>
+          </Bracket>
         </div>
 
         <div class="mt-8 text-sm text-white/80 text-center">

@@ -321,7 +321,7 @@ function seedSlotsForSize(B: number): number[] {
 export async function generateBracket(tournamentId: string): Promise<{ inserted: number; bracketSize: number; rounds: number; errors: string[] }> {
   const errors: string[] = [];
 
-  // Guard: existing bracket matches?
+  // Guard: existing bracket matches? If present, delete them to allow regeneration.
   {
     const { data: existing, error } = await supabase
       .from('matches')
@@ -332,7 +332,15 @@ export async function generateBracket(tournamentId: string): Promise<{ inserted:
 
     if (error) return { inserted: 0, bracketSize: 0, rounds: 0, errors: [`Failed to check existing bracket: ${error.message}`] };
     if ((existing ?? []).length > 0) {
-      return { inserted: 0, bracketSize: 0, rounds: 0, errors: ['Bracket already exists. Use rebuildBracket() to overwrite when allowed.'] };
+      // Unconditionally remove existing bracket matches before generating anew
+      const { error: delErr } = await supabase
+        .from('matches')
+        .delete()
+        .eq('tournament_id', tournamentId)
+        .eq('match_type', 'bracket');
+      if (delErr) {
+        return { inserted: 0, bracketSize: 0, rounds: 0, errors: [`Failed to delete existing bracket: ${delErr.message}`] };
+      }
     }
   }
 
@@ -780,25 +788,10 @@ export async function checkBracketPrerequisites(tournamentId: string): Promise<B
 }
 
 /**
- * Rebuild bracket if and only if bracket_started=false.
- * Deletes existing bracket matches then calls generateBracket.
+ * Rebuild bracket unconditionally (always deletes existing bracket matches, then regenerates).
+ * Warning: this will wipe existing bracket matches and any recorded scores.
  */
 export async function rebuildBracket(tournamentId: string): Promise<{ inserted: number; bracketSize: number; rounds: number; errors: string[] }> {
-
-  // Check tournament flags
-  const { data: tData, error: tErr } = await supabase
-    .from('tournaments')
-    .select('id,bracket_started')
-    .eq('id', tournamentId)
-    .single();
-
-  if (tErr || !tData) {
-    return { inserted: 0, bracketSize: 0, rounds: 0, errors: [`Failed to load tournament: ${tErr?.message || 'not found'}`] };
-  }
-
-  if ((tData as Tournament).bracket_started) {
-    return { inserted: 0, bracketSize: 0, rounds: 0, errors: ['Cannot rebuild: bracket already started.'] };
-  }
 
   // Delete existing bracket matches (if any)
   const { error: delErr } = await supabase
