@@ -5,6 +5,7 @@ import { useSessionStore } from '../stores/session';
 import { useToast } from 'primevue/usetoast';
 import supabase from '../lib/supabase';
 import PublicLayout from '../components/layout/PublicLayout.vue';
+import BracketView from '../components/BracketView.vue';
 
 type UUID = string;
 
@@ -22,6 +23,7 @@ type Match = {
   live_score_team2: number | null;
   match_type: 'pool' | 'bracket';
   bracket_round: number | null;
+  bracket_match_index: number | null;
 };
 
 const route = useRoute();
@@ -59,9 +61,17 @@ function groupedByRound() {
     arr.push(m);
     map.set(r, arr);
   }
-  // sort each round by id for stability
+  // sort each round by bracket_match_index for proper visual order
   const entries = Array.from(map.entries()).sort((a, b) => a[0] - b[0]);
-  return entries.map(([r, arr]) => [r, arr.sort((a, b) => a.id.localeCompare(b.id))] as const);
+  return entries.map(([r, arr]) => [
+    r,
+    arr.sort((a, b) => {
+      const ai = (a.bracket_match_index ?? Number.MAX_SAFE_INTEGER);
+      const bi = (b.bracket_match_index ?? Number.MAX_SAFE_INTEGER);
+      if (ai !== bi) return ai - bi;
+      return a.id.localeCompare(b.id);
+    })
+  ] as const);
 }
 
 async function ensureTournament() {
@@ -97,11 +107,11 @@ async function loadMatches() {
   }
   const { data, error } = await supabase
     .from('matches')
-    .select('id,tournament_id,pool_id,round_number,team1_id,team2_id,is_live,live_score_team1,live_score_team2,match_type,bracket_round')
+    .select('id,tournament_id,pool_id,round_number,team1_id,team2_id,is_live,live_score_team1,live_score_team2,match_type,bracket_round,bracket_match_index')
     .eq('tournament_id', session.tournament.id)
     .eq('match_type', 'bracket')
     .order('bracket_round', { ascending: true })
-    .order('id', { ascending: true });
+    .order('bracket_match_index', { ascending: true });
 
   if (error) {
     toast.add({ severity: 'error', summary: 'Failed to load bracket', detail: error.message, life: 3000 });
@@ -113,6 +123,10 @@ async function loadMatches() {
 
 function openMatch(m: Match) {
   router.push({ name: 'match-actions', params: { accessCode: accessCode.value, matchId: m.id } });
+}
+function openMatchById(id: string) {
+  const m = matches.value.find(mm => mm.id === id);
+  if (m) openMatch(m);
 }
 
 // Realtime subscription
@@ -183,29 +197,12 @@ onBeforeUnmount(async () => {
           No bracket matches yet.
         </div>
 
-        <div v-else class="mt-6 space-y-6">
-          <div v-for="[r, arr] in groupedByRound()" :key="r" class="rounded-xl bg-white/10 ring-1 ring-white/20">
-            <div class="border-b border-white/25 px-4 py-3">
-              <div class="text-sm font-semibold text-white/80">{{ roundTitle(r) }}</div>
-            </div>
-            <ul class="p-4 grid gap-3">
-              <li
-                v-for="m in arr"
-                :key="m.id"
-                class="cursor-pointer rounded-xl bg-white/10 ring-1 ring-white/20 p-4 hover:bg-white/15 transition-colors text-white"
-                @click="openMatch(m)"
-              >
-                <div class="flex items-center justify-between">
-                  <div class="text-sm text-white/80">
-                    {{ m.match_type === 'bracket' ? 'Bracket' : 'Pool' }}{{ m.round_number ? ` R${m.round_number}` : '' }}
-                  </div>
-                </div>
-                <div class="mt-1 font-semibold text-white">
-                  {{ nameFor(m.team1_id) }} vs {{ nameFor(m.team2_id) }}
-                </div>
-              </li>
-            </ul>
-          </div>
+        <div v-else class="mt-6">
+          <BracketView
+            :matches="matches"
+            :teamNameById="teamNameById"
+            @open="openMatchById"
+          />
         </div>
 
         <div class="mt-8 text-sm text-white/80 text-center">

@@ -9,6 +9,7 @@ import Dropdown from 'primevue/dropdown';
 import ToggleButton from 'primevue/togglebutton';
 import UiSectionHeading from '@/components/ui/UiSectionHeading.vue';
 import supabase from '../lib/supabase';
+import BracketView from '../components/BracketView.vue';
 import { useSessionStore } from '../stores/session';
 import { generateBracket, rebuildBracket, checkBracketPrerequisites, type BracketPrereqReport } from '../lib/bracket';
 import { fillRandomPoolScores } from '../lib/testData';
@@ -27,6 +28,7 @@ type Match = {
   is_live: boolean;
   match_type: 'pool' | 'bracket';
   bracket_round: number | null;
+  bracket_match_index: number | null;
 };
 
 const router = useRouter();
@@ -49,6 +51,11 @@ const teamOptions = computed(() =>
   [{ id: null, full_team_name: '— (TBD)' } as any].concat(teams.value)
     .map((t) => ({ label: t.full_team_name, value: t.id }))
 );
+const teamNameById = computed(() => {
+  const map: Record<string, string> = {};
+  for (const t of teams.value) map[t.id] = t.full_team_name;
+  return map;
+});
 
 const maxRound = computed(() => Math.max(0, ...matches.value.map(m => m.bracket_round || 0)));
 function roundTitle(r: number) {
@@ -59,7 +66,7 @@ function roundTitle(r: number) {
   return `Round ${r}`;
 }
 
-function groupedByRound() {
+function groupedByRound(): Array<[number, Match[]]> {
   const map = new Map<number, Match[]>();
   for (const m of matches.value) {
     const r = m.bracket_round || 1;
@@ -67,7 +74,18 @@ function groupedByRound() {
     arr.push(m);
     map.set(r, arr);
   }
-  return Array.from(map.entries()).sort((a, b) => a[0] - b[0]);
+  // sort rounds asc, and matches within each round by bracket_match_index (fallback to id)
+  return Array.from(map.entries())
+    .sort((a, b) => a[0] - b[0])
+    .map(([r, arr]) => {
+      const sorted = arr.slice().sort((a, b) => {
+        const ai = a.bracket_match_index ?? Number.MAX_SAFE_INTEGER;
+        const bi = b.bracket_match_index ?? Number.MAX_SAFE_INTEGER;
+        if (ai !== bi) return ai - bi;
+        return a.id.localeCompare(b.id);
+      });
+      return [r, sorted] as [number, Match[]];
+    });
 }
 
 async function ensureTournamentByCode() {
@@ -114,11 +132,11 @@ async function loadMatches() {
   }
   const { data, error } = await supabase
     .from('matches')
-    .select('id,tournament_id,pool_id,round_number,team1_id,team2_id,is_live,match_type,bracket_round')
+    .select('id,tournament_id,pool_id,round_number,team1_id,team2_id,is_live,match_type,bracket_round,bracket_match_index')
     .eq('tournament_id', session.tournament.id)
     .eq('match_type', 'bracket')
     .order('bracket_round', { ascending: true })
-    .order('id', { ascending: true });
+    .order('bracket_match_index', { ascending: true });
   if (error) {
     toast.add({ severity: 'error', summary: 'Failed to load bracket', detail: error.message, life: 2500 });
     matches.value = [];
@@ -258,6 +276,9 @@ async function updateTeam(m: Match, side: 'team1_id' | 'team2_id', value: string
 
 function back() {
   router.push({ name: 'admin-dashboard' });
+}
+function openMatchById(id: string) {
+  router.push({ name: 'match-actions', params: { accessCode: session.accessCode, matchId: id } });
 }
 
 onMounted(async () => {
@@ -439,6 +460,18 @@ onMounted(async () => {
         </div>
 
         <div v-else class="grid gap-6">
+          <div class="rounded-lg border border-white/15 bg-white/5 overflow-hidden">
+            <div class="border-b border-white/15 px-4 py-3">
+              <div class="text-sm font-semibold">Bracket View</div>
+            </div>
+            <div class="p-4">
+              <BracketView
+                :matches="matches"
+                :teamNameById="teamNameById"
+                @open="openMatchById"
+              />
+            </div>
+          </div>
           <div v-for="[r, arr] in groupedByRound()" :key="r" class="rounded-lg border border-white/15 bg-white/5 overflow-hidden">
             <div class="border-b border-white/15 px-4 py-3">
               <div class="text-sm font-semibold">{{ roundTitle(r) }}</div>

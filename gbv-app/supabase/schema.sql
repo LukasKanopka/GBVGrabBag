@@ -103,6 +103,17 @@ create index if not exists idx_matches_team2 on public.matches(team2_id);
 create index if not exists idx_matches_ref_team on public.matches(ref_team_id);
 create index if not exists idx_matches_winner on public.matches(winner_id);
 
+-- Bracket indexing: stable per-round index and ordering
+alter table public.matches add column if not exists bracket_match_index integer;
+
+-- Unique index for bracket matches per tournament, round, and index
+create unique index if not exists matches_bracket_round_index_uidx
+  on public.matches(tournament_id, bracket_round, bracket_match_index)
+  where match_type = 'bracket';
+
+-- Composite order index to speed queries by round/index
+create index if not exists matches_bracket_order_idx
+  on public.matches(tournament_id, match_type, bracket_round, bracket_match_index);
 -- =========================
 -- schedule_templates
 -- =========================

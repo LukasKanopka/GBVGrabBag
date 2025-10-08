@@ -7,6 +7,7 @@ import { useToast } from 'primevue/usetoast';
 import supabase from '../lib/supabase';
 import { useSessionStore } from '../stores/session';
 import PublicLayout from '../components/layout/PublicLayout.vue';
+import { advanceWinnerToNextById } from '../lib/bracket';
 
 type UUID = string;
 
@@ -163,6 +164,11 @@ async function submitScore() {
       .update({ bracket_started: true })
       .eq('id', session.tournament.id)
       .eq('bracket_started', false);
+
+    // Auto-advance winner into next round slot (do not overwrite manual changes)
+    if (winner_id) {
+      await advanceWinnerToNextById(session.tournament.id, id);
+    }
   }
 
   toast.add({ severity: 'success', summary: 'Score submitted', life: 1800 });

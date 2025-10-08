@@ -363,7 +363,7 @@ export async function generateBracket(tournamentId: string): Promise<{ inserted:
   let totalInserted = 0;
   const rows: any[] = [];
 
-  function pushRow(bracket_round: number, team1_id: string | null, team2_id: string | null) {
+  function pushRow(bracket_round: number, bracket_match_index: number, team1_id: string | null, team2_id: string | null) {
     rows.push({
       tournament_id: tournamentId,
       pool_id: null,
@@ -376,6 +376,7 @@ export async function generateBracket(tournamentId: string): Promise<{ inserted:
       winner_id: null,
       match_type: 'bracket',
       bracket_round,
+      bracket_match_index,
       is_live: false,
       live_score_team1: null,
       live_score_team2: null,
@@ -393,16 +394,14 @@ export async function generateBracket(tournamentId: string): Promise<{ inserted:
       const b = prevLevel[2 * i + 1] ?? null;
 
       if (r === 1) {
-        // For Round 1, only create real matches where both teams are present; byes auto-carry forward
-        if (a && b) {
-          pushRow(r, a, b);
-        }
+        // Always create full Round 1 shape; null side indicates a BYE
+        pushRow(r, i, a, b);
       } else {
-        // For later rounds, create placeholder matches; fill any known side (from earlier byes)
-        pushRow(r, a, b);
+        // Later rounds start as TBD on both sides (avoid premature pre-fills)
+        pushRow(r, i, null, null);
       }
 
-      // Determine who carries to the next level (automatic advancement on byes)
+      // Determine who carries to the next level (automatic advancement on byes for internal mapping only)
       if (a && !b) nextLevel[i] = a;
       else if (!a && b) nextLevel[i] = b;
       else nextLevel[i] = null; // decided by earlier round winner
@@ -413,8 +412,73 @@ export async function generateBracket(tournamentId: string): Promise<{ inserted:
 
   if (rows.length > 0) {
     const { error: insertErr } = await supabase.from('matches').insert(rows);
-    if (insertErr) errors.push(`Failed to insert bracket matches: ${insertErr.message}`);
-    else totalInserted += rows.length;
+    if (insertErr) {
+      errors.push(`Failed to insert bracket matches: ${insertErr.message}`);
+    } else {
+      totalInserted += rows.length;
+
+      // Auto-resolve Round 1 BYEs one level forward only (no cascading)
+      try {
+        const { data: all, error: loadErr } = await supabase
+          .from('matches')
+          .select('id,bracket_round,bracket_match_index,team1_id,team2_id,winner_id')
+          .eq('tournament_id', tournamentId)
+          .eq('match_type', 'bracket');
+
+        if (!loadErr && Array.isArray(all)) {
+          const byKey = new Map<string, any>();
+          for (const m of all) {
+            if (m.bracket_round != null && m.bracket_match_index != null) {
+              byKey.set(`${m.bracket_round}:${m.bracket_match_index}`, m);
+            }
+          }
+
+          for (const m of all) {
+            if (m.bracket_round !== 1) continue;
+            const a = m.team1_id as string | null;
+            const b = m.team2_id as string | null;
+            const hasA = !!a;
+            const hasB = !!b;
+            const exactlyOne = (hasA && !hasB) || (!hasA && hasB);
+            if (!exactlyOne || m.winner_id) continue;
+
+            const winnerId = (hasA ? a : b) as string;
+
+            // Set winner on the BYE match
+            await supabase
+              .from('matches')
+              .update({ winner_id: winnerId })
+              .eq('id', m.id)
+              .eq('match_type', 'bracket');
+
+            // Place winner into next round (R2) appropriate side, if empty
+            const nextRound = 2;
+            const nextIndex = Math.floor((m.bracket_match_index as number) / 2);
+            const side = ((m.bracket_match_index as number) % 2 === 0) ? 'team1_id' : 'team2_id';
+            const next = byKey.get(`${nextRound}:${nextIndex}`) as any | undefined;
+            if (next) {
+              const curVal = side === 'team1_id' ? next.team1_id : next.team2_id;
+              if (!curVal) {
+                const { error: upNextErr } = await supabase
+                  .from('matches')
+                  .update(side === 'team1_id' ? { team1_id: winnerId } : { team2_id: winnerId })
+                  .eq('id', next.id)
+                  .eq('match_type', 'bracket');
+                if (!upNextErr) {
+                  // keep memory in sync to avoid duplicate work
+                  if (side === 'team1_id') next.team1_id = winnerId;
+                  else next.team2_id = winnerId;
+                }
+              }
+            }
+          }
+        } else if (loadErr) {
+          errors.push(`Failed to load bracket matches for BYE processing: ${loadErr.message}`);
+        }
+      } catch (e: any) {
+        errors.push(`BYE auto-advance failed: ${e?.message ?? String(e)}`);
+      }
+    }
   }
 
   // Update tournament phase and timestamp (keep bracket_started=false)
@@ -749,4 +813,70 @@ export async function rebuildBracket(tournamentId: string): Promise<{ inserted: 
 
   // Generate again
   return await generateBracket(tournamentId);
+}
+
+// --- Auto-advance winner into next round helper (appended) ---
+export async function advanceWinnerToNextById(tournamentId: string, matchId: string): Promise<{ updatedNext: boolean; error?: string }> {
+  try {
+    // Load current match minimal fields
+    const { data: m, error: mErr } = await supabase
+      .from('matches')
+      .select('id, match_type, bracket_round, bracket_match_index, winner_id')
+      .eq('tournament_id', tournamentId)
+      .eq('id', matchId)
+      .single();
+
+    if (mErr || !m) {
+      return { updatedNext: false, error: mErr?.message || 'Match not found' };
+    }
+    if (m.match_type !== 'bracket' || m.bracket_round == null || m.bracket_match_index == null) {
+      return { updatedNext: false, error: 'Not a bracket match or missing bracket indices' };
+    }
+    if (!m.winner_id) {
+      return { updatedNext: false, error: 'Winner not set' };
+    }
+
+    const curIndex: number = m.bracket_match_index as number;
+    const nextRound: number = (m.bracket_round as number) + 1;
+    const nextIndex: number = Math.floor(curIndex / 2);
+    const side: 'team1_id' | 'team2_id' = (curIndex % 2 === 0) ? 'team1_id' : 'team2_id';
+
+    // Load next round target match
+    const { data: next, error: nErr } = await supabase
+      .from('matches')
+      .select('id, team1_id, team2_id')
+      .eq('tournament_id', tournamentId)
+      .eq('match_type', 'bracket')
+      .eq('bracket_round', nextRound)
+      .eq('bracket_match_index', nextIndex)
+      .single();
+
+    // If next match not found (i.e., final already), nothing to update
+    if (nErr || !next) {
+      return { updatedNext: false, error: nErr?.message || 'No next match (final or missing row)' };
+    }
+
+    // Do not overwrite if already set to a different team (respect manual control)
+    const currentVal = side === 'team1_id' ? next.team1_id : next.team2_id;
+    if (currentVal && currentVal !== m.winner_id) {
+      return { updatedNext: false, error: 'Next slot already filled by a different team; not overwriting' };
+    }
+    if (currentVal === m.winner_id) {
+      return { updatedNext: false }; // Already set correctly
+    }
+
+    const updatePayload = side === 'team1_id' ? { team1_id: m.winner_id } : { team2_id: m.winner_id };
+    const { error: upErr } = await supabase
+      .from('matches')
+      .update(updatePayload)
+      .eq('id', next.id)
+      .eq('match_type', 'bracket');
+
+    if (upErr) {
+      return { updatedNext: false, error: upErr.message };
+    }
+    return { updatedNext: true };
+  } catch (e: any) {
+    return { updatedNext: false, error: e?.message ?? String(e) };
+  }
 }
