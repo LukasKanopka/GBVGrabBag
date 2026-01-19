@@ -32,6 +32,7 @@ const session = useSessionStore();
 
 const accessCode = computed(() => (route.params.accessCode as string) ?? session.accessCode ?? '');
 const matchId = computed(() => route.params.matchId as string);
+const from = computed(() => (route.query.from as string | undefined) ?? undefined);
 
 const loading = ref(false);
 const match = ref<Match | null>(null);
@@ -90,10 +91,26 @@ function nameFor(id: string | null) {
 
 function goManual() {
   if (!match.value) return;
-  router.push({ name: 'match-score', params: { accessCode: accessCode.value, matchId: match.value.id } });
+  router.push({ name: 'match-score', params: { accessCode: accessCode.value, matchId: match.value.id }, query: from.value ? { from: from.value } : undefined });
 }
 
-function backToPool() {
+const backLabel = computed(() => {
+  if (from.value === 'admin-bracket') return 'Back to Admin Bracket';
+  if (match.value?.match_type === 'bracket') return 'Back to Bracket';
+  return 'Back to Pool';
+});
+
+function backToContext() {
+  if (from.value === 'admin-bracket') {
+    router.push({ name: 'admin-bracket' });
+    return;
+  }
+
+  if (match.value?.match_type === 'bracket') {
+    router.push({ name: 'public-bracket', params: { accessCode: accessCode.value } });
+    return;
+  }
+
   if (!match.value?.pool_id) {
     router.push({ name: 'public-pool-list', params: { accessCode: accessCode.value } });
     return;
@@ -154,7 +171,7 @@ onMounted(async () => {
       </div>
 
       <div class="mt-8 text-sm text-white/80 text-center">
-        <button class="underline text-white" @click="backToPool">Back to Pool</button>
+        <button class="underline text-white" @click="backToContext">{{ backLabel }}</button>
       </div>
     </section>
   </PublicLayout>

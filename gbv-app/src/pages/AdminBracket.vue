@@ -48,6 +48,7 @@ const lastOp = ref<'generate' | 'rebuild' | 'prereq' | null>(null);
 
 const matches = ref<Match[]>([]);
 const teams = ref<Team[]>([]);
+const courts = ref<string[]>([]);
 const teamOptions = computed(() =>
   [{ id: null, full_team_name: '— (TBD)' } as any].concat(teams.value)
     .map((t) => ({ label: t.full_team_name, value: t.id }))
@@ -124,6 +125,37 @@ async function loadTeams() {
     return;
   }
   teams.value = (data as Team[]) ?? [];
+}
+
+async function loadCourts() {
+  if (!session.tournament) {
+    courts.value = [];
+    return;
+  }
+  const { data, error } = await supabase
+    .from('pools')
+    .select('court_assignment')
+    .eq('tournament_id', session.tournament.id);
+  if (error) {
+    courts.value = [];
+    return;
+  }
+  const vals = ((data as Array<{ court_assignment: string | null }>) ?? [])
+    .map((p) => (p.court_assignment ?? '').trim())
+    .filter(Boolean);
+
+  const uniq = Array.from(new Set(vals));
+  uniq.sort((a, b) => {
+    const na = Number(a);
+    const nb = Number(b);
+    const aNum = Number.isFinite(na);
+    const bNum = Number.isFinite(nb);
+    if (aNum && bNum) return na - nb;
+    if (aNum && !bNum) return -1;
+    if (!aNum && bNum) return 1;
+    return a.localeCompare(b);
+  });
+  courts.value = uniq;
 }
 
 async function loadMatches() {
@@ -279,7 +311,7 @@ function back() {
   router.push({ name: 'admin-dashboard' });
 }
 function openMatchById(id: string) {
-  router.push({ name: 'match-actions', params: { accessCode: session.accessCode, matchId: id } });
+  router.push({ name: 'match-actions', params: { accessCode: session.accessCode, matchId: id }, query: { from: 'admin-bracket' } });
 }
 
 onMounted(async () => {
@@ -292,6 +324,7 @@ onMounted(async () => {
   }
   if (session.tournament) {
     await loadTeams();
+    await loadCourts();
     await loadMatches();
   }
 });
@@ -469,6 +502,7 @@ onMounted(async () => {
               <BracketView
                 :matches="matches"
                 :teamNameById="teamNameById"
+                :courts="courts"
                 @open="openMatchById"
               />
             </div>

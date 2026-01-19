@@ -35,6 +35,7 @@ const session = useSessionStore();
 
 const accessCode = computed(() => (route.params.accessCode as string) ?? session.accessCode ?? '');
 const matchId = computed(() => route.params.matchId as string);
+const from = computed(() => (route.query.from as string | undefined) ?? undefined);
 
 const loading = ref(false);
 const teamNameById = ref<Record<string, string>>({});
@@ -176,7 +177,7 @@ async function submitScore() {
   if (match.value?.match_type === 'pool' && match.value?.pool_id) {
     router.push({ name: 'public-pool-details', params: { accessCode: accessCode.value, poolId: match.value.pool_id } });
   } else {
-    router.push({ name: 'match-actions', params: { accessCode: accessCode.value, matchId: id } });
+    router.push({ name: 'match-actions', params: { accessCode: accessCode.value, matchId: id }, query: from.value ? { from: from.value } : undefined });
   }
 }
 
@@ -185,7 +186,7 @@ function backToMatch() {
     router.push({ name: 'public-pool-list', params: { accessCode: accessCode.value } });
     return;
   }
-  router.push({ name: 'match-actions', params: { accessCode: accessCode.value, matchId: match.value.id } });
+  router.push({ name: 'match-actions', params: { accessCode: accessCode.value, matchId: match.value.id }, query: from.value ? { from: from.value } : undefined });
 }
 
 onMounted(async () => {

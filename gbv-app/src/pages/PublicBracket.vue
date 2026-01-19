@@ -37,6 +37,7 @@ const loading = ref(false);
 
 const matches = ref<Match[]>([]);
 const teamNameById = ref<Record<string, string>>({});
+const courts = ref<string[]>([]);
 
 async function ensureTournament() {
   if (!accessCode.value) return;
@@ -85,6 +86,37 @@ async function loadMatches() {
   matches.value = (data as Match[]) ?? [];
 }
 
+async function loadCourts() {
+  if (!session.tournament) {
+    courts.value = [];
+    return;
+  }
+  const { data, error } = await supabase
+    .from('pools')
+    .select('court_assignment')
+    .eq('tournament_id', session.tournament.id);
+  if (error) {
+    courts.value = [];
+    return;
+  }
+  const vals = ((data as Array<{ court_assignment: string | null }>) ?? [])
+    .map((p) => (p.court_assignment ?? '').trim())
+    .filter(Boolean);
+
+  const uniq = Array.from(new Set(vals));
+  uniq.sort((a, b) => {
+    const na = Number(a);
+    const nb = Number(b);
+    const aNum = Number.isFinite(na);
+    const bNum = Number.isFinite(nb);
+    if (aNum && bNum) return na - nb;
+    if (aNum && !bNum) return -1;
+    if (!aNum && bNum) return 1;
+    return a.localeCompare(b);
+  });
+  courts.value = uniq;
+}
+
 function openMatch(m: Match) {
   router.push({ name: 'match-actions', params: { accessCode: accessCode.value, matchId: m.id } });
 }
@@ -125,6 +157,7 @@ onMounted(async () => {
     await ensureTournament();
     await loadTeams();
     await loadMatches();
+    await loadCourts();
     await subscribeRealtime();
   } finally {
     loading.value = false;
@@ -163,7 +196,7 @@ onBeforeUnmount(async () => {
 
         <div v-else class="mt-6">
           <div class="-mx-5 sm:-mx-7">
-            <BracketView :matches="matches" :teamNameById="teamNameById" @open="openMatchById" />
+            <BracketView :matches="matches" :teamNameById="teamNameById" :courts="courts" @open="openMatchById" />
           </div>
         </div>
 

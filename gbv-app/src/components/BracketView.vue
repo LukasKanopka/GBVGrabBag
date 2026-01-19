@@ -16,6 +16,8 @@ export interface BracketMatch {
 const props = defineProps<{
   matches: BracketMatch[];
   teamNameById: Record<string, string>;
+  // Court labels, e.g. ["1","2","3"]. If empty, court assignment shows TBD.
+  courts?: string[];
   // Optional: show round titles
   showTitles?: boolean;
 }>();
@@ -65,7 +67,7 @@ const round1Count = computed(() => {
 const TITLE_HEIGHT = 32; // px fixed header height per column
 const COL_WIDTH = 230; // px for each round column
 const COL_GAP = 28; // px gap between columns
-const TILE_HEIGHT = 54; // px tile height
+const TILE_HEIGHT = 68; // px tile height
 const TILE_GAP = 20; // base vertical gap between r1 tiles
 
 const TILE_WIDTH = COL_WIDTH;
@@ -145,12 +147,137 @@ function winnerSide(m: BracketMatch): 1 | 2 | null {
   return null;
 }
 
+function loserTeamId(m: BracketMatch): string | null {
+  const winId = m.winner_id ?? null;
+  if (!winId) return null;
+  const t1 = m.team1_id ?? null;
+  const t2 = m.team2_id ?? null;
+  if (!t1 || !t2) return null;
+  if (winId === t1) return t2;
+  if (winId === t2) return t1;
+  return null;
+}
+
 function roundTitle(round: number): string {
   const mr = roundsCount.value;
   if (mr <= 1) return 'Final';
   if (mr === 2) return round === 1 ? 'Semifinals' : 'Final';
   if (mr === 3) return round === 1 ? 'Quarterfinals' : round === 2 ? 'Semifinals' : 'Final';
   return `Round ${round}`;
+}
+
+const courtsSorted = computed(() => {
+  const raw = (props.courts ?? []).map((c) => (c ?? '').trim()).filter(Boolean);
+  const uniq = Array.from(new Set(raw));
+  uniq.sort((a, b) => {
+    const na = Number(a);
+    const nb = Number(b);
+    const aNum = Number.isFinite(na);
+    const bNum = Number.isFinite(nb);
+    if (aNum && bNum) return na - nb;
+    if (aNum && !bNum) return -1;
+    if (!aNum && bNum) return 1;
+    return a.localeCompare(b);
+  });
+  return uniq;
+});
+
+type DerivedMeta = { court: string | null; refTeamId: string | null };
+const metaByMatchId = computed<Record<string, DerivedMeta>>(() => {
+  const meta: Record<string, DerivedMeta> = {};
+
+  const courts = courtsSorted.value;
+  const hasCourts = courts.length > 0;
+
+  const matchesByKey = new Map<string, BracketMatch>();
+  for (const m of props.matches) {
+    if (m.bracket_round == null || m.bracket_match_index == null) continue;
+    matchesByKey.set(`${m.bracket_round}:${m.bracket_match_index}`, m);
+  }
+
+  // schedule order: round asc then index asc
+  const ordered = props.matches
+    .filter((m) => m.bracket_round != null && m.bracket_match_index != null)
+    .slice()
+    .sort((a, b) => {
+      const ar = a.bracket_round ?? 0;
+      const br = b.bracket_round ?? 0;
+      if (ar !== br) return ar - br;
+      const ai = a.bracket_match_index ?? 0;
+      const bi = b.bracket_match_index ?? 0;
+      if (ai !== bi) return ai - bi;
+      return a.id.localeCompare(b.id);
+    });
+
+  // Court assignment per round: use courts from lowest to highest, wrap.
+  const courtIndexById = new Map<string, number>();
+  if (hasCourts) {
+    const byRound = new Map<number, BracketMatch[]>();
+    for (const m of ordered) {
+      const r = m.bracket_round ?? 1;
+      const arr = byRound.get(r) ?? [];
+      arr.push(m);
+      byRound.set(r, arr);
+    }
+    for (const [_r, arr] of byRound.entries()) {
+      arr.sort((a, b) => (a.bracket_match_index ?? 0) - (b.bracket_match_index ?? 0));
+      for (let i = 0; i < arr.length; i++) {
+        courtIndexById.set(arr[i].id, i % courts.length);
+      }
+    }
+  }
+
+  // For each court, track previous match in schedule order so ref is loser of previous match on that court.
+  const lastMatchByCourtIndex = new Map<number, BracketMatch>();
+
+  for (const m of ordered) {
+    const courtIndex = hasCourts ? (courtIndexById.get(m.id) ?? 0) : null;
+    const court = hasCourts && courtIndex != null ? courts[courtIndex] : null;
+    let refTeamId: string | null = null;
+
+    // Skip referee assignment for BYE-only matches (no game played)
+    if (!isRound1Bye(m)) {
+      const prev = courtIndex != null ? lastMatchByCourtIndex.get(courtIndex) : undefined;
+      if (courtIndex != null) {
+        if (prev) refTeamId = loserTeamId(prev);
+      }
+
+      // Special case: Round 1 play-in with a BYE opponent already placed in next match
+      // If there's no ref yet (first game on that court), use the already-advanced opponent as ref.
+      if (!refTeamId && !prev && (m.bracket_round ?? 1) === 1) {
+        const t1 = m.team1_id ?? null;
+        const t2 = m.team2_id ?? null;
+        const isPlayIn = !!t1 && !!t2;
+        if (isPlayIn) {
+          const nextIndex = Math.floor((m.bracket_match_index ?? 0) / 2);
+          const sideWinnerGoesTo = ((m.bracket_match_index ?? 0) % 2 === 0) ? 'team1_id' : 'team2_id';
+          const next = matchesByKey.get(`2:${nextIndex}`) ?? null;
+          if (next) {
+            const opponent = sideWinnerGoesTo === 'team1_id' ? (next.team2_id ?? null) : (next.team1_id ?? null);
+            if (opponent) refTeamId = opponent;
+          }
+        }
+      }
+    }
+
+    meta[m.id] = { court, refTeamId };
+
+    if (hasCourts && courtIndex != null && !isRound1Bye(m)) {
+      lastMatchByCourtIndex.set(courtIndex, m);
+    }
+  }
+
+  return meta;
+});
+
+function courtLabelFor(m: BracketMatch): string {
+  const court = metaByMatchId.value[m.id]?.court ?? null;
+  return court ? `Court ${court}` : 'Court TBD';
+}
+
+function refLabelFor(m: BracketMatch): string {
+  const refTeamId = metaByMatchId.value[m.id]?.refTeamId ?? null;
+  return `Ref: ${nameFor(refTeamId)}`;
 }
 
 function onOpen(m: BracketMatch) {
@@ -219,13 +346,17 @@ function onOpen(m: BracketMatch) {
 
               <template v-else>
                 <div class="tile-row" :class="{ 'tile-row--winner': winnerSide(m) === 1, 'tile-row--loser': !!winnerSide(m) && winnerSide(m) !== 1 }">
-                  <div class="team-name">{{ nameFor(m.team1_id) }}</div>
+                  <div class="team-name" :class="{ 'team-name--loser': !!winnerSide(m) && winnerSide(m) !== 1 }">{{ nameFor(m.team1_id) }}</div>
                   <span class="pill pill-winner" v-if="winnerSide(m) === 1">WIN</span>
                 </div>
 
                 <div class="tile-row" :class="{ 'tile-row--winner': winnerSide(m) === 2, 'tile-row--loser': !!winnerSide(m) && winnerSide(m) !== 2 }">
-                  <div class="team-name">{{ nameFor(m.team2_id) }}</div>
+                  <div class="team-name" :class="{ 'team-name--loser': !!winnerSide(m) && winnerSide(m) !== 2 }">{{ nameFor(m.team2_id) }}</div>
                   <span class="pill pill-winner" v-if="winnerSide(m) === 2">WIN</span>
+                </div>
+
+                <div class="tile-meta">
+                  {{ courtLabelFor(m) }} • {{ refLabelFor(m) }}
                 </div>
               </template>
             </div>
@@ -305,14 +436,14 @@ function onOpen(m: BracketMatch) {
   border-radius: 16px;
   background: rgba(255,255,255,0.10);
   border: 1px solid rgba(255,255,255,0.18);
-  padding: 8px 10px;
+  padding: 4px 8px;
   color: white;
   transition: background 0.15s ease-in-out, border-color 0.15s ease-in-out, transform 0.15s ease-in-out;
   backdrop-filter: blur(10px);
   display: flex;
   flex-direction: column;
   justify-content: center;
-  gap: 4px;
+  gap: 1px;
   z-index: 10;
 }
 
@@ -345,9 +476,11 @@ function onOpen(m: BracketMatch) {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  line-height: 1.15;
+  gap: 8px;
+  min-width: 0;
+  line-height: 1.05;
   border-radius: 12px;
-  padding: 4px 6px;
+  padding: 2px 6px;
 }
 
 .tile-row--winner {
@@ -363,18 +496,48 @@ function onOpen(m: BracketMatch) {
 }
 
 .team-name {
-  font-size: 0.85rem;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.83rem;
   font-weight: 650;
   padding-top: 1px; /* optical centering in compact rows */
 }
 
+.team-name--loser {
+  text-decoration: line-through;
+  text-decoration-thickness: 2px;
+  text-decoration-color: rgba(255,255,255,0.65);
+}
+
 .tile-subrow {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-size: 0.75rem;
   font-weight: 750;
   letter-spacing: 0.02em;
   text-transform: lowercase;
   color: rgba(255,255,255,0.80);
-  padding: 3px 6px;
+  padding: 2px 6px;
+}
+
+.tile-meta {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.72rem;
+  font-weight: 650;
+  color: rgba(255,255,255,0.72);
+  padding: 1px 6px 2px 6px;
 }
 
 .pill {
