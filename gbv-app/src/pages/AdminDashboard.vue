@@ -5,13 +5,47 @@ import { useSessionStore } from '../stores/session';
 import UiListItem from '@/components/ui/UiListItem.vue';
 import UiSectionHeading from '@/components/ui/UiSectionHeading.vue';
 import supabase from '../lib/supabase';
+import InputText from 'primevue/inputtext';
+import Button from 'primevue/button';
+import { useToast } from 'primevue/usetoast';
 
 const router = useRouter();
 const session = useSessionStore();
+const toast = useToast();
 
 async function signOut() {
   await session.signOutAdmin();
   router.replace({ name: 'admin-login' });
+}
+
+const accessCode = ref<string>(session.accessCode ?? '');
+const loadingTournament = ref(false);
+
+async function loadTournamentByAccessCode(opts?: { silent?: boolean }) {
+  const silent = !!opts?.silent;
+  const code = accessCode.value?.trim() ?? '';
+  if (!code) {
+    if (!silent) toast.add({ severity: 'warn', summary: 'Access code required', life: 2000 });
+    return;
+  }
+
+  loadingTournament.value = true;
+  try {
+    await session.ensureAnon();
+    session.setAccessCode(code);
+    const t = await session.loadTournamentByCode(code);
+    if (!t) {
+      if (!silent) toast.add({ severity: 'error', summary: 'Tournament not found', life: 2500 });
+      return;
+    }
+    if (!silent) toast.add({ severity: 'success', summary: 'Tournament loaded', detail: t.name, life: 1500 });
+    await loadStats();
+  } catch (err: any) {
+    console.error('Failed to load tournament:', err);
+    if (!silent) toast.add({ severity: 'error', summary: 'Load failed', detail: err?.message ?? 'Unknown error', life: 3000 });
+  } finally {
+    loadingTournament.value = false;
+  }
 }
 
 const stats = ref({
@@ -60,6 +94,9 @@ async function loadStats() {
       .eq('match_type', 'bracket');
     stats.value.bracketMatches = bracketCount || 0;
 
+  } catch (err: any) {
+    console.error('Failed to load dashboard stats:', err);
+    toast.add({ severity: 'error', summary: 'Stats failed to load', detail: err?.message ?? 'Unknown error', life: 3000 });
   } finally {
     stats.value.loading = false;
   }
@@ -77,17 +114,19 @@ type NavItem = {
 
 const navItems = computed<NavItem[]>(() => {
   const s = stats.value;
-  const t = session.tournament;
-  if (!t) {
-    // Basic items if no tournament loaded (though usually guarded)
-    return [];
-  }
+  const hasTournament = !!session.tournament;
 
   // Determine Players/Partners status
   const partnersMissing = s.totalTeams - s.teamsWithPartner;
   
   // Determine Pools status
   const unpooled = s.totalTeams - s.teamsInPool;
+
+  const needsTournament = (item: Omit<NavItem, 'disabled' | 'desc'> & { desc: string }): NavItem => ({
+    ...item,
+    desc: hasTournament ? item.desc : 'Load a tournament access code to enable.',
+    disabled: !hasTournament,
+  });
   
   return [
     {
@@ -96,52 +135,56 @@ const navItems = computed<NavItem[]>(() => {
       desc: 'Create/edit tournaments, rules, and status.',
       icon: 'pi-cog',
     },
-    {
+    needsTournament({
       to: { name: 'admin-players-import' },
       title: 'Players Import',
       desc: 'Upload CSV or add/remove players manually.',
       icon: 'pi-upload',
-      badge: s.totalTeams > 0 ? `${s.totalTeams} players` : undefined,
+      badge: hasTournament && s.totalTeams > 0 ? `${s.totalTeams} players` : undefined,
       badgeSeverity: 'info'
-    },
-    {
+    }),
+    needsTournament({
       to: { name: 'admin-pools-seeds' },
       title: 'Pools & Seeds',
       desc: 'Assign teams to pools; set seeds.',
       icon: 'pi-sort-alt',
-      badge: unpooled > 0 ? `${unpooled} unassigned` : (s.totalTeams > 0 ? 'Ready' : undefined),
-      badgeSeverity: unpooled > 0 ? 'warn' : 'success'
-    },
-    {
+      badge: hasTournament
+        ? (unpooled > 0 ? `${unpooled} unassigned` : (s.totalTeams > 0 ? 'Ready' : undefined))
+        : undefined,
+      badgeSeverity: unpooled > 0 ? 'warn' : 'success',
+    }),
+    needsTournament({
       to: { name: 'admin-partner-assignment' },
       title: 'Partner Assignment',
       desc: 'Enter drawn partner names for seeded players.',
       icon: 'pi-user-plus',
-      badge: partnersMissing > 0 ? `${partnersMissing} missing` : (s.totalTeams > 0 ? 'Complete' : undefined),
-      badgeSeverity: partnersMissing > 0 ? 'warn' : 'success'
-    },
-    {
+      badge: hasTournament
+        ? (partnersMissing > 0 ? `${partnersMissing} missing` : (s.totalTeams > 0 ? 'Complete' : undefined))
+        : undefined,
+      badgeSeverity: partnersMissing > 0 ? 'warn' : 'success',
+    }),
+    needsTournament({
       to: { name: 'admin-schedule-templates' },
       title: 'Schedule Templates',
       desc: 'Define templates for 4–5 team pools.',
       icon: 'pi-table',
-    },
-    {
+    }),
+    needsTournament({
       to: { name: 'admin-generate-schedule' },
       title: 'Generate Schedule',
       desc: 'Run prerequisites and create pool-play matches.',
       icon: 'pi-cog',
-      badge: s.poolMatches > 0 ? 'Generated' : 'Not Started',
-      badgeSeverity: s.poolMatches > 0 ? 'success' : 'info'
-    },
-    {
+      badge: hasTournament ? (s.poolMatches > 0 ? 'Generated' : 'Not Started') : undefined,
+      badgeSeverity: s.poolMatches > 0 ? 'success' : 'info',
+    }),
+    needsTournament({
       to: { name: 'admin-bracket' },
       title: 'Bracket',
       desc: 'Generate or manage playoff bracket.',
       icon: 'pi-sitemap',
-      badge: s.bracketMatches > 0 ? 'Generated' : undefined,
-      badgeSeverity: s.bracketMatches > 0 ? 'success' : undefined
-    },
+      badge: hasTournament ? (s.bracketMatches > 0 ? 'Generated' : undefined) : undefined,
+      badgeSeverity: s.bracketMatches > 0 ? 'success' : undefined,
+    }),
   ];
 });
 
@@ -158,9 +201,13 @@ const rightItems = computed(() => {
 });
 
 onMounted(() => {
-  if (session.tournament) {
-    loadStats();
+  session.initFromStorage();
+  if (!session.tournament && session.accessCode) {
+    accessCode.value = session.accessCode;
+    loadTournamentByAccessCode({ silent: true });
+    return;
   }
+  if (session.tournament) loadStats();
 });
 </script>
 
@@ -180,6 +227,39 @@ onMounted(() => {
         </button>
       
     </UiSectionHeading>
+
+    <div class="mb-6 rounded-xl border border-white/15 bg-white/5 p-4">
+      <div class="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div class="flex-1 min-w-0">
+          <div class="text-sm text-white/80">Tournament</div>
+          <div class="mt-0.5 font-semibold truncate">
+            {{ session.tournament ? session.tournament.name : 'No tournament loaded' }}
+          </div>
+          <div v-if="session.accessCode" class="mt-0.5 text-sm text-white/80">
+            Access code: <span class="font-mono">{{ session.accessCode }}</span>
+          </div>
+        </div>
+
+        <form class="flex gap-2 items-end" @submit.prevent="loadTournamentByAccessCode()">
+          <div class="flex flex-col gap-1">
+            <label class="text-sm font-semibold text-white">Access Code</label>
+            <InputText
+              v-model="accessCode"
+              placeholder="e.g. FALL25"
+              class="w-44 !rounded-xl !px-3 !py-2 bg-white/95 text-gray-900"
+              :disabled="loadingTournament"
+            />
+          </div>
+          <Button
+            type="submit"
+            label="Load"
+            icon="pi pi-refresh"
+            class="!rounded-xl border-none text-white gbv-grad-blue"
+            :loading="loadingTournament"
+          />
+        </form>
+      </div>
+    </div>
 
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-x-8">
       <div>

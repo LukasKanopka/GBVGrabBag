@@ -31,7 +31,7 @@ async function signIn(e: Event) {
 
 <template>
   <section class="min-h-dvh w-full">
-    <div class="min-h-dvh w-full flex items-center justify-center px-4 py-6 gbv-blue">
+    <div class="min-h-dvh w-full flex items-center justify-center px-4 py-6 bg-gbv-blue">
       <div class="w-full max-w-xl">
         <div class="text-center">
           <div class="flex flex-col items-center mb-8">
