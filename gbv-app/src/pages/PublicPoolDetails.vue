@@ -366,35 +366,40 @@ onBeforeUnmount(async () => {
         <div class="mt-6">
           <h3 class="text-lg font-semibold text-white">Standings</h3>
           <div v-if="standings.length === 0" class="mt-2 text-sm text-white/80">No results yet.</div>
-          <div v-else class="mt-3 overflow-x-auto">
-            <table class="min-w-full border-separate border-spacing-y-2">
-              <thead class="text-left text-sm text-white/80">
-                <tr>
-                  <th class="px-3 py-1">#</th>
-                  <th class="px-3 py-1">Team</th>
-                  <th class="px-3 py-1">W</th>
-                  <th class="px-3 py-1">L</th>
-                  <th class="px-3 py-1">Sets</th>
-                  <th class="px-3 py-1">Set %</th>
-                  <th class="px-3 py-1">Pt Diff</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-for="(s, i) in standings" :key="s.teamId" class="rounded-xl">
-                  <td class="px-3 py-2 text-white">{{ i + 1 }}</td>
-                  <td class="px-3 py-2">
-                    <div class="font-medium text-white">{{ s.name }}</div>
-                    <div v-if="s.seed != null" class="text-xs text-white/70">Seed: {{ s.seed }}</div>
-                  </td>
-                  <td class="px-3 py-2 text-white">{{ s.wins }}</td>
-                  <td class="px-3 py-2 text-white">{{ s.losses }}</td>
-                  <td class="px-3 py-2 text-white">{{ s.setWon }}-{{ s.setLost }}</td>
-                  <td class="px-3 py-2 text-white">{{ (s.setRatio * 100).toFixed(0) }}%</td>
-                  <td class="px-3 py-2 text-white">{{ s.pointDiff > 0 ? '+' + s.pointDiff : s.pointDiff }}</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
+          <ul v-else class="mt-3 grid gap-3">
+            <li
+              v-for="(s, i) in standings"
+              :key="s.teamId"
+              class="rounded-xl bg-white/10 ring-1 ring-white/20 p-4 text-white"
+            >
+              <div class="flex items-start gap-3">
+                <div
+                  class="mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white/10 ring-1 ring-white/20 text-sm font-semibold text-white/90 tabular-nums"
+                >
+                  {{ i + 1 }}
+                </div>
+
+                <div class="min-w-0 flex-1">
+                  <div class="flex items-start justify-between gap-3">
+                    <div class="min-w-0 flex-1">
+                      <div class="font-semibold text-white leading-tight">
+                        {{ s.name }}
+                      </div>
+                    </div>
+                    <div class="shrink-0 text-sm text-white/80 tabular-nums">
+                      {{ s.wins }}-{{ s.losses }}
+                    </div>
+                  </div>
+
+                  <div class="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-xs text-white/70">
+                    <span>Seed: {{ s.seed ?? '—' }}</span>
+                    <span>Set Ratio: {{ (s.setRatio * 100).toFixed(0) }}%</span>
+                    <span>Pt Diff: {{ s.pointDiff > 0 ? '+' + s.pointDiff : s.pointDiff }}</span>
+                  </div>
+                </div>
+              </div>
+            </li>
+          </ul>
         </div>
 
         <!-- Schedule -->
@@ -419,8 +424,16 @@ onBeforeUnmount(async () => {
                   {{ completedLabel(m) }}
                 </span>
               </div>
-              <div class="mt-1 font-semibold text-white">
-                {{ nameFor(m.team1_id) }} vs {{ nameFor(m.team2_id) }}
+              <div class="mt-1">
+                <div class="font-semibold text-white leading-tight">
+                  {{ nameFor(m.team1_id) }}
+                </div>
+                <div class="text-xs font-medium text-white/70 leading-tight">
+                  vs
+                </div>
+                <div class="font-semibold text-white leading-tight">
+                  {{ nameFor(m.team2_id) }}
+                </div>
               </div>
               <div class="mt-1 text-xs text-white/70">
                 Ref: {{ nameFor(m.ref_team_id) }}

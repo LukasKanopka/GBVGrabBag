@@ -214,10 +214,18 @@ onMounted(async () => {
 
       <div v-if="match" class="mt-4 rounded-xl bg-white/10 ring-1 ring-white/20 p-4 text-white">
         <div class="text-sm text-white/80">
-          {{ match.match_type === 'bracket' ? 'Bracket' : 'Pool' }}{{ match.round_number ? ` R${match.round_number}` : '' }}:
-          <span class="font-semibold">{{ nameFor(match.team1_id) }}</span>
-          vs
-          <span class="font-semibold">{{ nameFor(match.team2_id) }}</span>
+          {{ match.match_type === 'bracket' ? 'Bracket' : 'Pool' }}{{ match.round_number ? ` R${match.round_number}` : '' }}
+        </div>
+        <div class="mt-2">
+          <div class="font-semibold text-white leading-tight">
+            {{ nameFor(match.team1_id) }}
+          </div>
+          <div class="text-sm font-medium text-white/70 leading-tight">
+            vs
+          </div>
+          <div class="font-semibold text-white leading-tight">
+            {{ nameFor(match.team2_id) }}
+          </div>
         </div>
       </div>
 
