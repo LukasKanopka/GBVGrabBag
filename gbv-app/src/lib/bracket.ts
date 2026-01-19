@@ -387,46 +387,27 @@ export async function generateBracket(tournamentId: string): Promise<{ inserted:
     });
   }
 
-  // Build bracket with preliminary matches only where both teams are present (no R1 BYE matches).
-  // BYE seeds are pre-placed into Round 2 on the appropriate side; prelim winners feed into that side's opponent.
-  // Rounds 3+ start as TBD and will be populated as winners advance.
+  // Build bracket with preliminary matches.
+  // We ALWAYS create R1 matches for any seeded position, even if it's a BYE (User A vs null).
+  // The auto-resolver at the end of this function will detect the BYE, set the winner, and move them to R2.
   const r1Pairs = B >> 1;      // standard total R1 pairs in a full bracket
-  const r2Matches = B >> 2;    // standard total R2 matches
 
-  // Pre-allocate Round 2 sides
-  const r2Team1: (string | null)[] = Array.from({ length: r2Matches }, () => null);
-  const r2Team2: (string | null)[] = Array.from({ length: r2Matches }, () => null);
-
-  // Scan standard Round 1 pairs and either create prelim matches or place byes into Round 2
+  // Create Round 1 matches
   for (let i = 0; i < r1Pairs; i++) {
     const a = level0[2 * i] ?? null;
     const b = level0[2 * i + 1] ?? null;
-    const j = Math.floor(i / 2);
-    const sideIsTeam1 = (i % 2 === 0);
 
-    if (a && b) {
-      // Preliminary match actually played in Round 1 (no BYE)
+    if (a || b) {
+      // Create match if at least one team is present (standard or BYE)
       pushRow(1, i, a, b);
-    } else if (a || b) {
-      // BYE: promote existing team into Round 2 appropriate side
-      const id = (a || b) as string;
-      if (sideIsTeam1) {
-        r2Team1[j] = id;
-      } else {
-        r2Team2[j] = id;
-      }
-    } else {
-      // both null -> nothing to create
     }
+    // If both null (empty bracket slot), we create nothing? 
+    // Actually, usually standard brackets are fully populated or empty. 
+    // If seeds are sparse, unused slots remain empty.
   }
 
-  // Create Round 2 matches, prefilled with any bye seed placed above
-  for (let j = 0; j < r2Matches; j++) {
-    pushRow(2, j, r2Team1[j], r2Team2[j]);
-  }
-
-  // Create later rounds as TBD
-  for (let r = 3; r <= rounds; r++) {
+  // Create later rounds as TBD (starting from Round 2)
+  for (let r = 2; r <= rounds; r++) {
     const matchCount = B >> r;
     for (let i = 0; i < matchCount; i++) {
       pushRow(r, i, null, null);
