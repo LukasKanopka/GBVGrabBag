@@ -69,6 +69,7 @@ const TILE_HEIGHT = 54; // px tile height
 const TILE_GAP = 20; // base vertical gap between r1 tiles
 
 const TILE_WIDTH = COL_WIDTH;
+const CONNECTOR_GAP = 1; // px gap between tile edge and connector so lines don't show under translucent tiles
 const bracketWidth = computed(() => {
   const cols = grouped.value.length;
   if (!cols) return 0;
@@ -240,11 +241,12 @@ function onOpen(m: BracketMatch) {
                 :key="m.id + '-conn'"
                 :d="(() => {
                   const index = m.bracket_match_index ?? 0;
-                  const x1 = tileRightXFor(r) - 10;
+                  const x1 = tileRightXFor(r) + CONNECTOR_GAP;
                   const y1 = centerYFor(r, index);
-                  const x2 = tileLeftXFor(r + 1) + 10;
+                  const rawX2 = tileLeftXFor(r + 1) - CONNECTOR_GAP;
+                  const x2 = Math.max(rawX2, x1);
                   const y2 = centerYFor(r + 1, Math.floor(index / 2));
-                  const mx = x1 + (COL_GAP / 2);
+                  const mx = x1 + (x2 - x1) / 2;
                   return `M ${x1} ${y1} H ${mx} V ${y2} H ${x2}`;
                 })()"
                 class="connector"
