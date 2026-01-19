@@ -227,8 +227,9 @@ const metaByMatchId = computed<Record<string, DerivedMeta>>(() => {
     }
   }
 
-  // For each court, track previous match in schedule order so ref is loser of previous match on that court.
-  const lastMatchByCourtIndex = new Map<number, BracketMatch>();
+  // Ref assignment: loser of the previous played game refs the next played game (global schedule order),
+  // with a special-case for Round 1 play-ins (the already-advanced BYE opponent refs the play-in).
+  let lastPlayedMatchGlobal: BracketMatch | null = null;
 
   for (const m of ordered) {
     const courtIndex = hasCourts ? (courtIndexById.get(m.id) ?? 0) : null;
@@ -237,14 +238,9 @@ const metaByMatchId = computed<Record<string, DerivedMeta>>(() => {
 
     // Skip referee assignment for BYE-only matches (no game played)
     if (!isRound1Bye(m)) {
-      const prev = courtIndex != null ? lastMatchByCourtIndex.get(courtIndex) : undefined;
-      if (courtIndex != null) {
-        if (prev) refTeamId = loserTeamId(prev);
-      }
-
-      // Special case: Round 1 play-in with a BYE opponent already placed in next match
-      // If there's no ref yet (first game on that court), use the already-advanced opponent as ref.
-      if (!refTeamId && !prev && (m.bracket_round ?? 1) === 1) {
+      // Special case (highest priority): Round 1 play-in with a BYE opponent already placed in next match.
+      // The already-advanced team refs the play-in game.
+      if ((m.bracket_round ?? 1) === 1) {
         const t1 = m.team1_id ?? null;
         const t2 = m.team2_id ?? null;
         const isPlayIn = !!t1 && !!t2;
@@ -258,12 +254,17 @@ const metaByMatchId = computed<Record<string, DerivedMeta>>(() => {
           }
         }
       }
+
+      // Default: loser of the previous played game in overall schedule order.
+      if (!refTeamId && lastPlayedMatchGlobal) {
+        refTeamId = loserTeamId(lastPlayedMatchGlobal);
+      }
     }
 
     meta[m.id] = { court, refTeamId };
 
-    if (hasCourts && courtIndex != null && !isRound1Bye(m)) {
-      lastMatchByCourtIndex.set(courtIndex, m);
+    if (!isRound1Bye(m)) {
+      lastPlayedMatchGlobal = m;
     }
   }
 
@@ -276,6 +277,7 @@ function courtLabelFor(m: BracketMatch): string {
 }
 
 function refLabelFor(m: BracketMatch): string {
+  if (isRound1Bye(m)) return 'Ref: —';
   const refTeamId = metaByMatchId.value[m.id]?.refTeamId ?? null;
   return `Ref: ${nameFor(refTeamId)}`;
 }

@@ -321,7 +321,9 @@ function seedSlotsForSize(B: number): number[] {
 export async function generateBracket(tournamentId: string): Promise<{ inserted: number; bracketSize: number; rounds: number; errors: string[] }> {
   const errors: string[] = [];
 
-  // Hard reset any existing bracket matches before generation
+  // Attempt to reset any existing bracket matches before generation.
+  // Note: In some Supabase RLS configurations, delete may be a silent no-op (204, 0 rows) for anon users.
+  // We use UPSERT later to avoid unique constraint failures even when deletes are blocked.
   {
     const { error: delErr } = await supabase
       .from('matches')
@@ -329,7 +331,7 @@ export async function generateBracket(tournamentId: string): Promise<{ inserted:
       .eq('tournament_id', tournamentId)
       .eq('match_type', 'bracket');
     if (delErr) {
-      return { inserted: 0, bracketSize: 0, rounds: 0, errors: [`Failed to delete existing bracket: ${delErr.message}`] };
+      errors.push(`Failed to delete existing bracket (continuing with upsert): ${delErr.message}`);
     }
   }
 
@@ -415,13 +417,47 @@ export async function generateBracket(tournamentId: string): Promise<{ inserted:
   }
 
   if (rows.length > 0) {
-    const { error: insertErr } = await supabase
+    // Use upsert to avoid duplicate key failures when delete is blocked by RLS (or races).
+    const { error: upsertErr } = await supabase
       .from('matches')
-      .insert(rows);
-    if (insertErr) {
-      errors.push(`Failed to insert bracket matches: ${insertErr.message}`);
+      .upsert(rows, { onConflict: 'tournament_id,bracket_round,bracket_match_index' });
+
+    if (upsertErr) {
+      errors.push(`Failed to insert bracket matches: ${upsertErr.message}`);
     } else {
       totalInserted += rows.length;
+
+      // Best-effort cleanup: delete any old bracket matches not in this generated key-set.
+      // (If delete is blocked by RLS, this may silently no-op; bracket rendering will still be correct
+      // as long as bracket size/rounds are stable.)
+      try {
+        const allowedKeys = new Set<string>(rows.map((r) => `${r.bracket_round}:${r.bracket_match_index}`));
+        const { data: existing, error: exErr } = await supabase
+          .from('matches')
+          .select('id, bracket_round, bracket_match_index')
+          .eq('tournament_id', tournamentId)
+          .eq('match_type', 'bracket');
+        if (!exErr && Array.isArray(existing)) {
+          const toDelete = existing
+            .filter((m: any) => m.bracket_round != null && m.bracket_match_index != null)
+            .filter((m: any) => !allowedKeys.has(`${m.bracket_round}:${m.bracket_match_index}`))
+            .map((m: any) => m.id as string);
+          if (toDelete.length) {
+            const { error: delExtraErr } = await supabase
+              .from('matches')
+              .delete()
+              .in('id', toDelete)
+              .eq('match_type', 'bracket');
+            if (delExtraErr) {
+              errors.push(`Failed to remove stale bracket matches: ${delExtraErr.message}`);
+            }
+          }
+        } else if (exErr) {
+          errors.push(`Failed to verify bracket matches after upsert: ${exErr.message}`);
+        }
+      } catch (e: any) {
+        errors.push(`Bracket cleanup failed: ${e?.message ?? String(e)}`);
+      }
 
       // Auto-resolve Round 1 BYEs one level forward only (no cascading)
       try {
