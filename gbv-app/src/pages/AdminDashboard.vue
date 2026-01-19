@@ -50,7 +50,7 @@ async function loadTournamentByAccessCode(opts?: { silent?: boolean }) {
 
 const stats = ref({
   totalTeams: 0,
-  teamsWithPartner: 0,
+  teamsNamed: 0,
   teamsInPool: 0,
   poolMatches: 0,
   bracketMatches: 0,
@@ -72,8 +72,8 @@ async function loadStats() {
     if (!tErr && teams) {
       stats.value.totalTeams = teams.length;
       stats.value.teamsInPool = teams.filter(t => !!t.pool_id).length;
-      // Partner logic: if full name differs from seeded name, we assume partner is set
-      stats.value.teamsWithPartner = teams.filter(t => 
+      // If full name differs from seeded name, we assume the team has been fully named.
+      stats.value.teamsNamed = teams.filter(t =>
         (t.full_team_name || '').trim() !== (t.seeded_player_name || '').trim()
       ).length;
     }
@@ -116,8 +116,8 @@ const navItems = computed<NavItem[]>(() => {
   const s = stats.value;
   const hasTournament = !!session.tournament;
 
-  // Determine Players/Partners status
-  const partnersMissing = s.totalTeams - s.teamsWithPartner;
+  // Determine team naming status
+  const namesMissing = s.totalTeams - s.teamsNamed;
   
   // Determine Pools status
   const unpooled = s.totalTeams - s.teamsInPool;
@@ -138,10 +138,12 @@ const navItems = computed<NavItem[]>(() => {
     needsTournament({
       to: { name: 'admin-players-import' },
       title: 'Players Import',
-      desc: 'Upload CSV or add/remove players manually.',
+      desc: 'Upload CSV or add/remove teams manually.',
       icon: 'pi-upload',
-      badge: hasTournament && s.totalTeams > 0 ? `${s.totalTeams} players` : undefined,
-      badgeSeverity: 'info'
+      badge: hasTournament
+        ? (s.totalTeams > 0 ? (namesMissing > 0 ? `${namesMissing} unnamed` : 'Ready') : undefined)
+        : undefined,
+      badgeSeverity: namesMissing > 0 ? 'warn' : 'success'
     }),
     needsTournament({
       to: { name: 'admin-pools-seeds' },
@@ -152,16 +154,6 @@ const navItems = computed<NavItem[]>(() => {
         ? (unpooled > 0 ? `${unpooled} unassigned` : (s.totalTeams > 0 ? 'Ready' : undefined))
         : undefined,
       badgeSeverity: unpooled > 0 ? 'warn' : 'success',
-    }),
-    needsTournament({
-      to: { name: 'admin-partner-assignment' },
-      title: 'Partner Assignment',
-      desc: 'Enter drawn partner names for seeded players.',
-      icon: 'pi-user-plus',
-      badge: hasTournament
-        ? (partnersMissing > 0 ? `${partnersMissing} missing` : (s.totalTeams > 0 ? 'Complete' : undefined))
-        : undefined,
-      badgeSeverity: partnersMissing > 0 ? 'warn' : 'success',
     }),
     needsTournament({
       to: { name: 'admin-schedule-templates' },

@@ -109,12 +109,6 @@ const routes: RouteRecordRaw[] = [
     meta: { requiresAdmin: true, blueLayout: true },
   },
   {
-    path: '/admin/partner-assignment',
-    name: 'admin-partner-assignment',
-    component: () => import('../pages/AdminPartnerAssignment.vue'),
-    meta: { requiresAdmin: true, blueLayout: true },
-  },
-  {
     path: '/admin/bracket',
     name: 'admin-bracket',
     component: () => import('../pages/AdminBracket.vue'),

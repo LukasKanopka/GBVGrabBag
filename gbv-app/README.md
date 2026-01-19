@@ -115,7 +115,6 @@ Usage examples:
 Coming next:
 - Schedule Template Management UI (CRUD) and validation
 - Pools & Seeds Management UI (drag/drop)
-- Partner Assignment (mobile)
 - generateSchedule using schedule_templates
 - Bracket generation (single elimination + best-of-3 option per tournament)
 - Live scoreboard w/ Supabase Realtime stream + global LIVE indicator

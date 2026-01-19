@@ -16,7 +16,6 @@ Source of truth: Product Requirements at [PRD.md](PRD.md)
 - Bracket lifecycle fields added: bracket_started and bracket_generated_at in [supabase/schema.sql](supabase/schema.sql) and types in [src/types/db.ts](src/types/db.ts)
 - Players Import UI implemented and linked via [src/pages/AdminPlayersImport.vue](src/pages/AdminPlayersImport.vue) and routed in [src/router/index.ts](src/router/index.ts)
 - Pools & Seeds UI implemented and linked via [src/pages/AdminPoolsSeeds.vue](src/pages/AdminPoolsSeeds.vue) and routed in [src/router/index.ts](src/router/index.ts)
-- Partner Assignment implemented and linked via [src/pages/AdminPartnerAssignment.vue](src/pages/AdminPartnerAssignment.vue) and routed in [src/router/index.ts](src/router/index.ts)
 - Generate Schedule UI implemented and linked via [src/pages/AdminGenerateSchedule.vue](src/pages/AdminGenerateSchedule.vue) and routed in [src/router/index.ts](src/router/index.ts)
 - Public Pools: Matches list and Standings with tiebreakers implemented in [src/pages/PublicPoolList.vue](src/pages/PublicPoolList.vue), [src/pages/PublicPoolDetails.vue](src/pages/PublicPoolDetails.vue), and [src/pages/MatchActions.vue](src/pages/MatchActions.vue)
 - Bracket Engine (Policy A: top-2 advance per pool, byes to top seeds, bracket size 2/4/8) implemented in [computePoolStandings()](src/lib/bracket.ts:73), [seedAdvancers()](src/lib/bracket.ts:232), [generateBracket()](src/lib/bracket.ts:315), [rebuildBracket()](src/lib/bracket.ts:473)
@@ -34,7 +33,9 @@ Source of truth: Product Requirements at [PRD.md](PRD.md)
 - Optional: Finals best-of-3 series support (best_of_3_single_elim)
 
 ## MVP Decisions and Assumptions
-- Players CSV: single column with header seeded_player_name, UTF-8
+- Players CSV (header-based, UTF-8):
+  - Doubles: `seeded_player_name,second_player_name`
+  - Team-name tournaments: `seeded_player_name,team_name`
 - Pool sizes supported for templates/generation: 4, 5
 - Bracket formats: single_elimination and best_of_3_single_elim (finals)
 - Tiebreakers priority: head_to_head, set_ratio, point_diff, random
@@ -43,8 +44,8 @@ Source of truth: Product Requirements at [PRD.md](PRD.md)
 
 ### Phase B — Admin Foundations
 1. Players Import (AdminPlayersImport.vue)
-   - Build CSV upload using Papaparse; preview table with de-duplication (case-insensitive)
-   - Bulk insert: teams rows with seeded_player_name and full_team_name = seeded_player_name; pool_id null; seed_in_pool null
+   - CSV upload with header support and de-duplication (case-insensitive)
+   - Bulk insert: teams rows with seeded_player_name and full_team_name computed from doubles/team-name columns
    - Manual add/remove/edit row UI
    - Acceptance: Duplicates prevented; invalid CSV errors shown; rows persist to DB
 
@@ -54,16 +55,10 @@ Source of truth: Product Requirements at [PRD.md](PRD.md)
    - Visual validation for missing or duplicate seeds
    - Acceptance: Pool assignment and seeds persist; no seed conflicts; UX reflects errors
 
-3. Partner Assignment (AdminPartnerAssignment.vue)
-   - Mobile-first list of seeded players; tap to enter partner name
-   - Auto update full_team_name as Seeded + Partner
-   - Completeness indicator and filter for “missing partner”
-   - Acceptance: Partner names persist; team names update; completeness turns 100 percent when all set
-
 ### Phase C — Pool Play UX
 4. Generate Schedule UI (AdminGenerateSchedule.vue or dashboard card)
    - Button triggers [checkPrerequisites()](src/lib/schedule.ts:36); if ok calls [generateSchedule()](src/lib/schedule.ts:76)
-   - Disable until prerequisites met; surface missing templates per pool size and missing partners
+   - Disable until prerequisites met; surface missing templates per pool size and missing team naming
    - Guard against duplicates: if pool matches exist, prompt to confirm overwrite or block
    - Acceptance: Matches inserted per templates; errors clear; no accidental duplicates
 
@@ -96,7 +91,7 @@ Source of truth: Product Requirements at [PRD.md](PRD.md)
 ### Phase E — Polish and Docs
 9. Dashboard Checks and Badges
    - Templates coverage for pool sizes in use
-   - Partners completeness
+   - Team naming completeness
    - Seeding completeness (no null seeds when pooled)
    - Pool schedule generated status
    - Bracket status and generated time
@@ -139,7 +134,6 @@ Source of truth: Product Requirements at [PRD.md](PRD.md)
 ## Execution Checklist (live)
 - [x] AdminPlayersImport.vue implemented and linked
 - [x] AdminPoolsSeeds.vue implemented and linked
-- [x] AdminPartnerAssignment.vue implemented and linked
 - [x] Generate Schedule UI wired and guarded
 - [x] Public Pools: Matches list and Standings ready
 - [x] Bracket engine implemented with AdminBracket.vue
@@ -151,8 +145,7 @@ Source of truth: Product Requirements at [PRD.md](PRD.md)
 ```mermaid
 flowchart TD
   A[Admin imports players] --> B[Assign pools and seeds]
-  B --> C[Partner assignment]
-  C --> D{Prereqs ok templates + partners}
+  B --> D{Prereqs ok templates + team naming}
   D -- yes --> E[Generate pool schedule]
   E --> F[Players enter scores]
   F --> G[Compute standings]

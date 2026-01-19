@@ -44,14 +44,14 @@ export async function checkPrerequisites(tournamentId: string): Promise<{ ok: bo
 
   if (teamsErr) return { ok: false, errors: [`Failed to load teams: ${teamsErr.message}`] };
 
-  // 1) Partners must be assigned for all seeded players
-  const missingPartners = (teams as TeamRec[]).filter((t) => {
+  // 1) Teams must have a "real" team name (not just the seeded player)
+  const missingTeamNames = (teams as TeamRec[]).filter((t) => {
     const seeded = (t.seeded_player_name || '').trim().toLowerCase();
     const full = (t.full_team_name || '').trim().toLowerCase();
     return !seeded || !full || full === seeded;
   });
-  if (missingPartners.length > 0) {
-    errors.push(`Partner assignment incomplete: ${missingPartners.length} team(s) missing partner in full_team_name.`);
+  if (missingTeamNames.length > 0) {
+    errors.push(`Team naming incomplete: ${missingTeamNames.length} team(s) missing a second player or team name.`);
   }
 
   // 2) Schedule templates must exist for each pool size

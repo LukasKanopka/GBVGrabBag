@@ -17,9 +17,23 @@ type TeamRow = {
   full_team_name: string;
 };
 
+type ParsedImportRow = {
+  seeded_player_name: string;
+  second_player_name: string;
+  team_name: string;
+};
+
 type PreviewRow = {
-  name: string;
-  status: 'new' | 'existing' | 'duplicate_in_file';
+  seeded_player_name: string;
+  second_player_name: string;
+  team_name: string;
+  full_team_name: string;
+  status:
+    | 'new'
+    | 'existing'
+    | 'duplicate_in_file'
+    | 'invalid_missing_seeded_player_name'
+    | 'invalid_missing_second_or_team_name';
 };
 
 const router = useRouter();
@@ -34,26 +48,74 @@ const teams = ref<TeamRow[]>([]);
 
 // CSV and manual input
 const fileInput = ref<HTMLInputElement | null>(null);
-const parsedNames = ref<string[]>([]);
-const manualName = ref<string>('');
+const parsedRows = ref<ParsedImportRow[]>([]);
+const manualSeededName = ref<string>('');
+const manualSecondPlayerName = ref<string>('');
+const manualTeamName = ref<string>('');
 
-// Preview list derived from parsedNames vs DB state
+// Preview list derived from parsedRows vs DB state
 const preview = computed<PreviewRow[]>(() => {
   const seenFile: Set<string> = new Set();
   const existingNamesLc = new Set(
     teams.value.map((t) => t.seeded_player_name.trim().toLowerCase())
   );
-  return parsedNames.value.map((raw) => {
-    const name = raw.trim();
-    const lc = name.toLowerCase();
+
+  return parsedRows.value.map((row) => {
+    const seeded = normalizeName(row.seeded_player_name);
+    const second = normalizeName(row.second_player_name);
+    const teamName = normalizeName(row.team_name);
+
+    if (!seeded) {
+      return {
+        seeded_player_name: seeded,
+        second_player_name: second,
+        team_name: teamName,
+        full_team_name: '',
+        status: 'invalid_missing_seeded_player_name' as const,
+      };
+    }
+
+    if (!second && !teamName) {
+      return {
+        seeded_player_name: seeded,
+        second_player_name: second,
+        team_name: teamName,
+        full_team_name: seeded,
+        status: 'invalid_missing_second_or_team_name' as const,
+      };
+    }
+
+    const full = computeFullTeamName(seeded, second, teamName);
+    const lc = seeded.toLowerCase();
+
     if (seenFile.has(lc)) {
-      return { name, status: 'duplicate_in_file' as const };
+      return {
+        seeded_player_name: seeded,
+        second_player_name: second,
+        team_name: teamName,
+        full_team_name: full,
+        status: 'duplicate_in_file' as const,
+      };
     }
     seenFile.add(lc);
+
     if (existingNamesLc.has(lc)) {
-      return { name, status: 'existing' as const };
+      return {
+        seeded_player_name: seeded,
+        second_player_name: second,
+        team_name: teamName,
+        full_team_name: full,
+        status: 'existing' as const,
+      };
     }
-    return { name, status: 'new' as const };
+
+    return {
+      seeded_player_name: seeded,
+      second_player_name: second,
+      team_name: teamName,
+      full_team_name: full,
+      status: 'new' as const,
+    };
   });
 });
 
@@ -71,6 +133,43 @@ function normalizeName(name: string) {
   return name.replace(/\s+/g, ' ').trim();
 }
 
+function computeFullTeamName(seededPlayerName: string, secondPlayerName: string, teamName: string) {
+  const seeded = normalizeName(seededPlayerName);
+  const second = normalizeName(secondPlayerName);
+  const team = normalizeName(teamName);
+  if (team) return team;
+  if (second) return `${seeded} + ${second}`;
+  return seeded;
+}
+
+function downloadCsv(filename: string, csvText: string) {
+  const blob = new Blob([csvText], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+function downloadDoublesTemplate() {
+  const csv = [
+    'seeded_player_name,second_player_name',
+    'Insert Seeded Player Here & Below, Insert Second Player Here & Below',
+  ].join('\n');
+  downloadCsv('gbv_doubles_template.csv', csv);
+}
+
+function downloadTeamNameTemplate() {
+  const csv = [
+    'seeded_player_name,team_name',
+    'Add Seeded Player Name Here & Below, Add Team Name Here & Below',
+  ].join('\n');
+  downloadCsv('gbv_team_name_template.csv', csv);
+}
+
 function escapeRegExp(value: string) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
@@ -82,15 +181,15 @@ function computeFullTeamNameForSeedChange(oldSeededName: string, newSeededName: 
 
   if (!oldSeed || !nextSeed) return nextSeed || existing || '';
 
-  // If no partner assigned yet, full mirrors seeded player name.
+  // If no second/team name assigned yet, full mirrors seeded player name.
   if (existing.toLowerCase() === oldSeed.toLowerCase()) return nextSeed;
 
-  // If full looks like "{Seeded} + {Partner}", preserve partner and update seeded part.
+  // If full looks like "{Seeded} + {Second}", preserve the second name and update seeded part.
   const re = new RegExp(`^${escapeRegExp(oldSeed)}\\s*\\+\\s*(.+)$`, 'i');
   const m = existing.match(re);
   if (m && m[1]) {
-    const partner = m[1].trim();
-    return partner ? `${nextSeed} + ${partner}` : nextSeed;
+    const second = m[1].trim();
+    return second ? `${nextSeed} + ${second}` : nextSeed;
   }
 
   // Otherwise, keep existing full name (it may be custom) to avoid accidental corruption.
@@ -98,19 +197,121 @@ function computeFullTeamNameForSeedChange(oldSeededName: string, newSeededName: 
 }
 
 function parseCsvSingleColumn(text: string) {
-  // Expect UTF-8 text; single column: seeded_player_name; first line may be header "seeded_player_name"
-  const lines = text.split(/\r?\n/).map((l) => l.trim());
-  const filtered = lines.filter((l) => l.length > 0);
-  if (filtered.length === 0) return [];
+  // Deprecated: kept only as an internal helper name for historical reasons.
+  // We now parse header-based CSVs and support doubles or team-name formats.
+  return parseCsvWithHeaders(text);
+}
 
-  const first = filtered[0].toLowerCase();
-  const hasHeader = first === 'seeded_player_name';
+function parseCsv(text: string): string[][] {
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let field = '';
+  let inQuotes = false;
 
-  const names = (hasHeader ? filtered.slice(1) : filtered)
-    .map(normalizeName)
-    .filter((n) => !!n);
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
 
-  return names;
+    if (inQuotes) {
+      if (ch === '"') {
+        const next = text[i + 1];
+        if (next === '"') {
+          field += '"';
+          i++;
+        } else {
+          inQuotes = false;
+        }
+      } else {
+        field += ch;
+      }
+      continue;
+    }
+
+    if (ch === '"') {
+      inQuotes = true;
+      continue;
+    }
+
+    if (ch === ',') {
+      row.push(field);
+      field = '';
+      continue;
+    }
+
+    if (ch === '\n') {
+      row.push(field);
+      field = '';
+      rows.push(row);
+      row = [];
+      continue;
+    }
+
+    if (ch === '\r') {
+      // ignore
+      continue;
+    }
+
+    field += ch;
+  }
+
+  row.push(field);
+  if (row.some((c) => c.trim().length > 0)) rows.push(row);
+
+  // Remove trailing empty rows (common from editors)
+  while (rows.length > 0 && rows[rows.length - 1].every((c) => (c ?? '').trim() === '')) {
+    rows.pop();
+  }
+
+  return rows;
+}
+
+function normalizeHeader(h: string) {
+  // Trim BOM + normalize to snake-ish identifiers
+  return (h || '')
+    .replace(/^\uFEFF/, '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, '_');
+}
+
+function parseCsvWithHeaders(text: string): ParsedImportRow[] {
+  const rows = parseCsv(text);
+  if (rows.length === 0) return [];
+
+  const headers = (rows[0] || []).map(normalizeHeader);
+
+  const colIndex = (candidates: string[]) => {
+    for (const c of candidates) {
+      const idx = headers.indexOf(c);
+      if (idx >= 0) return idx;
+    }
+    return -1;
+  };
+
+  const seededIdx = colIndex(['seeded_player_name', 'seated_player_name']);
+  const secondIdx = colIndex(['second_player_name', 'player2_name']);
+  const teamIdx = colIndex(['team_name']);
+
+  if (seededIdx < 0) {
+    throw new Error('CSV header must include seeded_player_name (or seated_player_name).');
+  }
+  if (secondIdx < 0 && teamIdx < 0) {
+    throw new Error('CSV must include either second_player_name (doubles) or team_name (team-name tournaments).');
+  }
+
+  const out: ParsedImportRow[] = [];
+  for (const raw of rows.slice(1)) {
+    const seeded = normalizeName(raw[seededIdx] ?? '');
+    const second = normalizeName(secondIdx >= 0 ? (raw[secondIdx] ?? '') : '');
+    const teamName = normalizeName(teamIdx >= 0 ? (raw[teamIdx] ?? '') : '');
+
+    // Keep even "invalid" rows so the UI can show them and the user can remove/fix upstream.
+    out.push({
+      seeded_player_name: seeded,
+      second_player_name: second,
+      team_name: teamName,
+    });
+  }
+  return out;
 }
 
 // Load tournament + teams
@@ -163,13 +364,13 @@ async function handleFileChange(e: Event) {
 
   try {
     const text = await file.text();
-    const names = parseCsvSingleColumn(text);
-    if (names.length === 0) {
+    const rows = parseCsvSingleColumn(text);
+    if (rows.length === 0) {
       toast.add({ severity: 'warn', summary: 'CSV empty', life: 2000 });
       return;
     }
-    parsedNames.value = names;
-    toast.add({ severity: 'success', summary: 'CSV parsed', detail: `${names.length} line(s)`, life: 1500 });
+    parsedRows.value = rows;
+    toast.add({ severity: 'success', summary: 'CSV parsed', detail: `${rows.length} row(s)`, life: 1500 });
   } catch (err: any) {
     toast.add({ severity: 'error', summary: 'Parse failed', detail: err?.message ?? 'Unknown error', life: 3000 });
   } finally {
@@ -178,20 +379,31 @@ async function handleFileChange(e: Event) {
 }
 
 function clearPreview() {
-  parsedNames.value = [];
+  parsedRows.value = [];
 }
 
 function removePreviewAt(idx: number) {
-  parsedNames.value = parsedNames.value.filter((_, i) => i !== idx);
+  parsedRows.value = parsedRows.value.filter((_, i) => i !== idx);
 }
 
 // Manual add to preview list
 
 function addManualToPreview() {
-  const name = normalizeName(manualName.value);
-  if (!name) return;
-  parsedNames.value = [...parsedNames.value, name];
-  manualName.value = '';
+  const seeded = normalizeName(manualSeededName.value);
+  const second = normalizeName(manualSecondPlayerName.value);
+  const teamName = normalizeName(manualTeamName.value);
+  if (!seeded) return;
+  parsedRows.value = [
+    ...parsedRows.value,
+    {
+      seeded_player_name: seeded,
+      second_player_name: second,
+      team_name: teamName,
+    },
+  ];
+  manualSeededName.value = '';
+  manualSecondPlayerName.value = '';
+  manualTeamName.value = '';
 }
 
 // Insert new players
@@ -234,7 +446,7 @@ async function insertNewPlayers() {
     toast.add({ severity: 'warn', summary: 'Load a tournament first', life: 2000 });
     return;
   }
-  const newOnes = preview.value.filter((p) => p.status === 'new').map((p) => p.name);
+  const newOnes = preview.value.filter((p) => p.status === 'new');
   if (newOnes.length === 0) {
     toast.add({ severity: 'info', summary: 'Nothing to insert', life: 1500 });
     return;
@@ -258,11 +470,11 @@ async function insertNewPlayers() {
     startSeed = 0;
   }
 
-  const rows = newOnes.map((name, idx) => ({
+  const rows = newOnes.map((p, idx) => ({
     tournament_id: session.tournament!.id,
     pool_id: null,
-    seeded_player_name: name,
-    full_team_name: name, // initial full name equals seeded name
+    seeded_player_name: p.seeded_player_name,
+    full_team_name: p.full_team_name,
     seed_in_pool: null,
     seed_global: startSeed + idx + 1,
   }));
@@ -271,12 +483,12 @@ async function insertNewPlayers() {
   try {
     const { error } = await supabase.from('teams').insert(rows);
     if (error) throw error;
-    toast.add({ severity: 'success', summary: `Inserted ${rows.length} player(s)`, life: 1500 });
+    toast.add({ severity: 'success', summary: `Inserted ${rows.length} team(s)`, life: 1500 });
     // refresh state
     await loadTeams();
     // remove those names from preview list so only unresolved remain
-    const newSetLc = new Set(newOnes.map((n) => n.toLowerCase()));
-    parsedNames.value = parsedNames.value.filter((n) => !newSetLc.has(n.toLowerCase()));
+    const newSetLc = new Set(newOnes.map((r) => r.seeded_player_name.toLowerCase()));
+    parsedRows.value = parsedRows.value.filter((r) => !newSetLc.has((r.seeded_player_name || '').toLowerCase()));
   } catch (err: any) {
     const code = (err && typeof err === 'object') ? (err as any).code : undefined;
     if (code === '23503') {
@@ -300,11 +512,13 @@ async function insertNewPlayers() {
 
 const selectedTeam = ref<TeamRow | null>(null);
 const editName = ref<string>('');
+const editFullTeamName = ref<string>('');
 const editDialogOpen = ref(false);
 
 function openEdit(team: TeamRow) {
   selectedTeam.value = team;
   editName.value = team.seeded_player_name;
+  editFullTeamName.value = team.full_team_name;
   editDialogOpen.value = true;
 }
 
@@ -315,20 +529,22 @@ async function applyEdit() {
     toast.add({ severity: 'warn', summary: 'Name required', life: 2000 });
     return;
   }
+  const fullInput = normalizeName(editFullTeamName.value);
+  const baselineFull = normalizeName(selectedTeam.value.full_team_name);
+  const nextFull =
+    fullInput && fullInput.toLowerCase() !== baselineFull.toLowerCase()
+      ? fullInput
+      : computeFullTeamNameForSeedChange(selectedTeam.value.seeded_player_name, newName, selectedTeam.value.full_team_name);
   try {
     const { error } = await supabase
       .from('teams')
       .update({
         seeded_player_name: newName,
-        full_team_name: computeFullTeamNameForSeedChange(
-          selectedTeam.value.seeded_player_name,
-          newName,
-          selectedTeam.value.full_team_name
-        ),
+        full_team_name: nextFull || newName,
       })
       .eq('id', selectedTeam.value.id);
     if (error) throw error;
-    toast.add({ severity: 'success', summary: 'Player updated', life: 1200 });
+    toast.add({ severity: 'success', summary: 'Team updated', life: 1200 });
     editDialogOpen.value = false;
     await loadTeams();
   } catch (err: any) {
@@ -353,7 +569,7 @@ function changeTournamentCode() {
   session.clearAccessCode();
   accessCode.value = '';
   teams.value = [];
-  parsedNames.value = [];
+  parsedRows.value = [];
   toast.add({ severity: 'info', summary: 'Tournament cleared', life: 1500 });
   router.push({ name: 'tournament-public' });
 }
@@ -379,7 +595,7 @@ onMounted(async () => {
   <section class="mx-auto max-w-6xl px-4 py-6">
     <UiSectionHeading
       title="Players Import"
-      subtitle="Upload a CSV (seeded_player_name) or add manually. Designed mobile-first; desktop table appears on larger screens."
+      subtitle="Upload a header-based CSV for doubles (seeded_player_name + second_player_name) or team-name tournaments (seeded_player_name + team_name)."
       :divider="true"
     >
       
@@ -432,64 +648,91 @@ onMounted(async () => {
       </div>
     </div>
 
-    <!-- CSV Import and Manual Add -->
-    <div class="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-2">
-      <!-- CSV Import -->
-      <div>
-        <UiAccordion title="CSV Import" :defaultOpen="true" subtitle="Single column with header seeded_player_name">
-          <div class="grid gap-3">
-            <div class="flex items-center gap-3">
-              <input
-                ref="fileInput"
-                type="file"
-                accept=".csv,text/csv"
-                class="block w-full text-sm file:mr-3 file:rounded-md file:border-0 file:bg-white file:px-3 file:py-2 file:text-slate-900"
-                @change="handleFileChange"
-              />
-              <Button
-                label="Clear"
-                size="small"
-                severity="secondary"
-                outlined
-                class="!rounded-xl !border-white/40 !text-white hover:!bg-white/10"
-                @click="clearPreview"
-              />
-            </div>
+	    <!-- CSV Import and Manual Add -->
+	    <div class="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-2">
+	      <!-- CSV Import -->
+	      <div>
+	        <UiAccordion
+	          title="CSV Import"
+	          :defaultOpen="true"
+	          subtitle="Requires headers. Use either (seeded_player_name, second_player_name) or (seeded_player_name, team_name)."
+	        >
+	          <div class="grid gap-3">
+	            <div class="flex flex-col sm:flex-row sm:items-center gap-3">
+	              <input
+	                ref="fileInput"
+	                type="file"
+	                accept=".csv,text/csv"
+	                class="block w-full text-sm file:mr-3 file:rounded-md file:border-0 file:bg-white file:px-3 file:py-2 file:text-slate-900"
+	                @change="handleFileChange"
+	              />
+	              <div class="flex items-center gap-2">
+	                <Button
+	                  label="Doubles Template"
+	                  icon="pi pi-download"
+	                  size="small"
+	                  severity="secondary"
+	                  outlined
+	                  class="!rounded-xl !border-white/40 !text-white hover:!bg-white/10"
+	                  @click="downloadDoublesTemplate"
+	                />
+	                <Button
+	                  label="Team Template"
+	                  icon="pi pi-download"
+	                  size="small"
+	                  severity="secondary"
+	                  outlined
+	                  class="!rounded-xl !border-white/40 !text-white hover:!bg-white/10"
+	                  @click="downloadTeamNameTemplate"
+	                />
+	              </div>
+	              <Button
+	                label="Clear"
+	                size="small"
+	                severity="secondary"
+	                outlined
+	                class="!rounded-xl !border-white/40 !text-white hover:!bg-white/10"
+	                @click="clearPreview"
+	              />
+	            </div>
 
             <!-- Mobile-first preview list -->
-            <div class="rounded-lg border border-white/15 overflow-hidden lg:hidden" v-if="preview.length">
-              <div
-                v-for="(row, idx) in preview"
-                :key="row.name + '-' + idx"
-                class="flex items-center justify-between gap-3 px-4 py-3 border-b border-white/10 last:border-b-0"
-              >
-                <div class="min-w-0">
-                  <div class="font-medium truncate">{{ row.name }}</div>
-                  <div class="mt-0.5 text-xs">
-                    <span
-                      :class="[
-                        'px-2 py-0.5 rounded-full font-semibold',
-                        row.status === 'new' ? 'bg-emerald-400/20 text-emerald-200' :
-                        row.status === 'existing' ? 'bg-white/20 text-white' :
-                        'bg-amber-400/20 text-amber-200'
-                      ]"
-                    >
-                      {{ row.status.replace(/_/g, ' ') }}
-                    </span>
-                  </div>
-                </div>
-                <div class="shrink-0 flex items-center gap-2">
-                  <Button
-                    icon="pi pi-times"
-                    text
-                    severity="secondary"
-                    class="!rounded-xl !text-white"
-                    @click="removePreviewAt(idx)"
-                    :aria-label="'Remove ' + row.name"
-                  />
-                </div>
-              </div>
-            </div>
+	            <div class="rounded-lg border border-white/15 overflow-hidden lg:hidden" v-if="preview.length">
+	              <div
+	                v-for="(row, idx) in preview"
+	                :key="row.seeded_player_name + '-' + idx"
+	                class="flex items-center justify-between gap-3 px-4 py-3 border-b border-white/10 last:border-b-0"
+	              >
+	                <div class="min-w-0">
+	                  <div class="font-medium truncate">{{ row.full_team_name || row.seeded_player_name || '(missing seeded_player_name)' }}</div>
+	                  <div class="mt-0.5 text-xs text-white/80 truncate" v-if="row.seeded_player_name && row.full_team_name && row.full_team_name !== row.seeded_player_name">
+	                    Seeded: {{ row.seeded_player_name }}
+	                  </div>
+	                  <div class="mt-0.5 text-xs">
+	                    <span
+	                      :class="[
+	                        'px-2 py-0.5 rounded-full font-semibold',
+	                        row.status === 'new' ? 'bg-emerald-400/20 text-emerald-200' :
+	                        row.status === 'existing' ? 'bg-white/20 text-white' :
+	                        (row.status === 'duplicate_in_file' ? 'bg-amber-400/20 text-amber-200' : 'bg-rose-400/20 text-rose-200')
+	                      ]"
+	                    >
+	                      {{ row.status.replace(/_/g, ' ') }}
+	                    </span>
+	                  </div>
+	                </div>
+	                <div class="shrink-0 flex items-center gap-2">
+	                  <Button
+	                    icon="pi pi-times"
+	                    text
+	                    severity="secondary"
+	                    class="!rounded-xl !text-white"
+	                    @click="removePreviewAt(idx)"
+	                    :aria-label="'Remove ' + (row.seeded_player_name || 'row')"
+	                  />
+	                </div>
+	              </div>
+	            </div>
 
             <!-- Desktop DataTable preview -->
             <div class="hidden lg:block">
@@ -503,35 +746,39 @@ onMounted(async () => {
                   thead: { class: 'bg-white/10 text-white' },
                   tbody: { class: 'text-white/90' }
                 }"
-              >
-                <Column field="name" header="Name" headerClass="!bg-white/10 !text-white" />
-                <Column field="status" header="Status" headerClass="!bg-white/10 !text-white">
-                  <template #body="{ data }">
-                    <span
-                      :class="{
-                        'px-2 py-1 rounded-full text-xs font-semibold bg-emerald-400/20 text-emerald-200': data.status === 'new',
-                        'px-2 py-1 rounded-full text-xs font-semibold bg-white/20 text-white': data.status === 'existing',
-                        'px-2 py-1 rounded-full text-xs font-semibold bg-amber-400/20 text-amber-200': data.status === 'duplicate_in_file'
-                      }"
-                    >
-                      {{ data.status.replace(/_/g, ' ') }}
-                    </span>
-                  </template>
-                </Column>
-              </DataTable>
-            </div>
+	              >
+	                <Column field="seeded_player_name" header="Seeded Player" headerClass="!bg-white/10 !text-white" />
+	                <Column field="second_player_name" header="Second Player" headerClass="!bg-white/10 !text-white" />
+	                <Column field="team_name" header="Team Name" headerClass="!bg-white/10 !text-white" />
+	                <Column field="full_team_name" header="Computed Team" headerClass="!bg-white/10 !text-white" />
+	                <Column field="status" header="Status" headerClass="!bg-white/10 !text-white">
+	                  <template #body="{ data }">
+	                    <span
+	                      :class="{
+	                        'px-2 py-1 rounded-full text-xs font-semibold bg-emerald-400/20 text-emerald-200': data.status === 'new',
+	                        'px-2 py-1 rounded-full text-xs font-semibold bg-white/20 text-white': data.status === 'existing',
+	                        'px-2 py-1 rounded-full text-xs font-semibold bg-amber-400/20 text-amber-200': data.status === 'duplicate_in_file',
+	                        'px-2 py-1 rounded-full text-xs font-semibold bg-rose-400/20 text-rose-200': data.status.startsWith('invalid_')
+	                      }"
+	                    >
+	                      {{ data.status.replace(/_/g, ' ') }}
+	                    </span>
+	                  </template>
+	                </Column>
+	              </DataTable>
+	            </div>
 
             <div class="flex items-center justify-between">
               <div class="text-sm text-white/90">
                 New to insert: <span class="font-semibold">{{ canInsertCount }}</span>
               </div>
-              <Button
-                :disabled="!session.tournament || canInsertCount === 0"
-                label="Insert New Players"
-                icon="pi pi-upload"
-                class="!rounded-xl border-none text-white gbv-grad-blue"
-                @click="insertNewPlayers"
-              />
+	              <Button
+	                :disabled="!session.tournament || canInsertCount === 0"
+	                label="Insert New Teams"
+	                icon="pi pi-upload"
+	                class="!rounded-xl border-none text-white gbv-grad-blue"
+	                @click="insertNewPlayers"
+	              />
             </div>
           </div>
         </UiAccordion>
@@ -542,23 +789,39 @@ onMounted(async () => {
         <UiAccordion title="Manual Add / Existing Players" :defaultOpen="true">
           <div class="grid gap-4">
             <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
-              <div class="sm:col-span-2">
+              <div>
                 <label class="block text-sm mb-2">Seeded Player Name</label>
                 <InputText
-                  v-model="manualName"
-                  placeholder="e.g. Lukas Kanopka"
+                  v-model="manualSeededName"
+                  placeholder="e.g. Seeded Player"
                   class="w-full !rounded-xl !px-4 !py-3 !bg-white !text-slate-900"
                 />
               </div>
-              <div class="flex">
-                <Button
-                  :disabled="!manualName.trim()"
-                  label="Add to Preview"
-                  icon="pi pi-plus"
-                  class="!rounded-xl border-none text-white gbv-grad-blue"
-                  @click="addManualToPreview"
+              <div>
+                <label class="block text-sm mb-2">Second Player Name (doubles)</label>
+                <InputText
+                  v-model="manualSecondPlayerName"
+                  placeholder="e.g. Second Player"
+                  class="w-full !rounded-xl !px-4 !py-3 !bg-white !text-slate-900"
                 />
               </div>
+              <div>
+                <label class="block text-sm mb-2">Team Name (team-name tournaments)</label>
+                <InputText
+                  v-model="manualTeamName"
+                  placeholder="e.g. The Gators"
+                  class="w-full !rounded-xl !px-4 !py-3 !bg-white !text-slate-900"
+                />
+              </div>
+            </div>
+            <div class="flex">
+              <Button
+                :disabled="!manualSeededName.trim() || (!manualSecondPlayerName.trim() && !manualTeamName.trim())"
+                label="Add to Import Batch"
+                icon="pi pi-plus"
+                class="!rounded-xl border-none text-white gbv-grad-blue"
+                @click="addManualToPreview"
+              />
             </div>
 
             <!-- Mobile-first existing players list -->
@@ -575,7 +838,7 @@ onMounted(async () => {
                   <Button label="Delete" size="small" text severity="danger" @click="deleteTeam(t)" />
                 </div>
               </div>
-              <div v-if="teams.length === 0" class="px-4 py-3 text-sm text-white/80">No players yet.</div>
+	              <div v-if="teams.length === 0" class="px-4 py-3 text-sm text-white/80">No teams yet.</div>
             </div>
 
             <!-- Desktop DataTable existing players -->
@@ -611,31 +874,41 @@ onMounted(async () => {
               v-if="editDialogOpen"
               class="rounded-lg border border-white/15 bg-white/5 p-4"
             >
-              <div class="text-sm font-semibold">Edit Player</div>
-              <div class="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
-                <div class="sm:col-span-2">
+              <div class="text-sm font-semibold">Edit Team</div>
+              <div class="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3 items-end">
+                <div>
                   <label class="block text-sm mb-2">Seeded Player Name</label>
                   <InputText v-model="editName" class="w-full !rounded-xl !px-4 !py-3 !bg-white !text-slate-900" />
                 </div>
-                <div class="flex gap-2">
-                  <Button label="Save" class="!rounded-xl border-none text-white gbv-grad-blue" @click="applyEdit" />
-                  <Button label="Cancel" severity="secondary" outlined class="!rounded-xl !border-white/40 !text-white hover:!bg-white/10" @click="editDialogOpen = false" />
+                <div>
+                  <label class="block text-sm mb-2">Full Team Name</label>
+                  <InputText v-model="editFullTeamName" class="w-full !rounded-xl !px-4 !py-3 !bg-white !text-slate-900" />
                 </div>
               </div>
+              <div class="mt-3 flex gap-2">
+                <Button label="Save" class="!rounded-xl border-none text-white gbv-grad-blue" @click="applyEdit" />
+                <Button
+                  label="Cancel"
+                  severity="secondary"
+                  outlined
+                  class="!rounded-xl !border-white/40 !text-white hover:!bg-white/10"
+                  @click="editDialogOpen = false"
+                />
+              </div>
               <p class="mt-2 text-xs text-white/80">
-                Note: full_team_name mirrors this value until partner assignment.
+                Tip: For doubles, set full_team_name to "Seeded + Second". For team-name tournaments, set it to the provided team name.
               </p>
             </div>
-          </div>
-        </UiAccordion>
-      </div>
-    </div>
+	          </div>
+	        </UiAccordion>
+	      </div>
+	    </div>
 
-    <div class="mt-6 text-sm text-white/80">
-      Tip: Avoid duplicates. The importer de-duplicates within the CSV and skips players already present in the tournament.
-    </div>
-  </section>
-</template>
+	    <div class="mt-6 text-sm text-white/80">
+	      Tip: Avoid duplicates. The importer de-duplicates within the CSV and skips teams already present (by seeded_player_name).
+	    </div>
+	  </section>
+	</template>
 
 <style scoped>
 </style>
