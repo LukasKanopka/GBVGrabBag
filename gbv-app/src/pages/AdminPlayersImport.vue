@@ -71,6 +71,32 @@ function normalizeName(name: string) {
   return name.replace(/\s+/g, ' ').trim();
 }
 
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function computeFullTeamNameForSeedChange(oldSeededName: string, newSeededName: string, existingFullTeamName: string) {
+  const oldSeed = normalizeName(oldSeededName);
+  const nextSeed = normalizeName(newSeededName);
+  const existing = normalizeName(existingFullTeamName);
+
+  if (!oldSeed || !nextSeed) return nextSeed || existing || '';
+
+  // If no partner assigned yet, full mirrors seeded player name.
+  if (existing.toLowerCase() === oldSeed.toLowerCase()) return nextSeed;
+
+  // If full looks like "{Seeded} + {Partner}", preserve partner and update seeded part.
+  const re = new RegExp(`^${escapeRegExp(oldSeed)}\\s*\\+\\s*(.+)$`, 'i');
+  const m = existing.match(re);
+  if (m && m[1]) {
+    const partner = m[1].trim();
+    return partner ? `${nextSeed} + ${partner}` : nextSeed;
+  }
+
+  // Otherwise, keep existing full name (it may be custom) to avoid accidental corruption.
+  return existing;
+}
+
 function parseCsvSingleColumn(text: string) {
   // Expect UTF-8 text; single column: seeded_player_name; first line may be header "seeded_player_name"
   const lines = text.split(/\r?\n/).map((l) => l.trim());
@@ -236,7 +262,6 @@ async function insertNewPlayers() {
     tournament_id: session.tournament!.id,
     pool_id: null,
     seeded_player_name: name,
-    partner_name: null,
     full_team_name: name, // initial full name equals seeded name
     seed_in_pool: null,
     seed_global: startSeed + idx + 1,
@@ -295,7 +320,11 @@ async function applyEdit() {
       .from('teams')
       .update({
         seeded_player_name: newName,
-        full_team_name: newName, // keep in sync until partner set later
+        full_team_name: computeFullTeamNameForSeedChange(
+          selectedTeam.value.seeded_player_name,
+          newName,
+          selectedTeam.value.full_team_name
+        ),
       })
       .eq('id', selectedTeam.value.id);
     if (error) throw error;

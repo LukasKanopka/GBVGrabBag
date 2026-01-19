@@ -7,6 +7,8 @@ interface Props {
   to?: any;
   icon?: string; // primeicons class suffix, e.g., "pi-users"
   disabled?: boolean;
+  badge?: string | number;
+  badgeSeverity?: 'success' | 'warn' | 'danger' | 'info';
 }
 const props = defineProps<Props>();
 </script>
@@ -35,7 +37,21 @@ const props = defineProps<Props>();
         {{ props.description }}
       </div>
     </div>
-    <div class="shrink-0">
+    <div class="shrink-0 flex items-center gap-2">
+      <slot name="badge">
+        <div 
+          v-if="props.badge"
+          class="px-2 py-0.5 rounded text-xs font-medium"
+          :class="[
+            props.badgeSeverity === 'success' ? 'bg-green-500/20 text-green-300' :
+            props.badgeSeverity === 'warn' ? 'bg-amber-500/20 text-amber-300' :
+            props.badgeSeverity === 'danger' ? 'bg-red-500/20 text-red-300' :
+            'bg-white/10 text-white/70'
+          ]"
+        >
+          {{ props.badge }}
+        </div>
+      </slot>
       <slot name="actions">
         <i v-if="props.to && !props.disabled" class="pi pi-chevron-right text-white/80"></i>
       </slot>

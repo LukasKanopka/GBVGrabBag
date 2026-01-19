@@ -6,7 +6,7 @@ type TeamRec = {
   id: string;
   pool_id: string | null;
   seed_in_pool: number | null;
-  partner_name: string | null;
+  seeded_player_name: string;
   full_team_name: string;
 };
 
@@ -39,15 +39,19 @@ export async function checkPrerequisites(tournamentId: string): Promise<{ ok: bo
 
   const { data: teams, error: teamsErr } = await supabase
     .from('teams')
-    .select('id,pool_id,seed_in_pool,partner_name,full_team_name')
+    .select('id,pool_id,seed_in_pool,seeded_player_name,full_team_name')
     .eq('tournament_id', tournamentId);
 
   if (teamsErr) return { ok: false, errors: [`Failed to load teams: ${teamsErr.message}`] };
 
   // 1) Partners must be assigned for all seeded players
-  const missingPartners = (teams as TeamRec[]).filter(t => t.partner_name == null || t.partner_name.trim() === '');
+  const missingPartners = (teams as TeamRec[]).filter((t) => {
+    const seeded = (t.seeded_player_name || '').trim().toLowerCase();
+    const full = (t.full_team_name || '').trim().toLowerCase();
+    return !seeded || !full || full === seeded;
+  });
   if (missingPartners.length > 0) {
-    errors.push(`Partner assignment incomplete: ${missingPartners.length} team(s) missing partner_name.`);
+    errors.push(`Partner assignment incomplete: ${missingPartners.length} team(s) missing partner in full_team_name.`);
   }
 
   // 2) Schedule templates must exist for each pool size
@@ -116,7 +120,7 @@ export async function generateSchedule(tournamentId: string): Promise<GenerateRe
 
   const { data: teamsData, error: teamsErr } = await supabase
     .from('teams')
-    .select('id,pool_id,seed_in_pool,partner_name,full_team_name')
+    .select('id,pool_id,seed_in_pool,seeded_player_name,full_team_name')
     .eq('tournament_id', tournamentId);
 
   if (teamsErr) return { inserted: 0, errors: [`Failed to load teams: ${teamsErr.message}`] };

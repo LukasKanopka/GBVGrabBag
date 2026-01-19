@@ -321,26 +321,15 @@ function seedSlotsForSize(B: number): number[] {
 export async function generateBracket(tournamentId: string): Promise<{ inserted: number; bracketSize: number; rounds: number; errors: string[] }> {
   const errors: string[] = [];
 
-  // Guard: existing bracket matches? If present, delete them to allow regeneration.
+  // Hard reset any existing bracket matches before generation
   {
-    const { data: existing, error } = await supabase
+    const { error: delErr } = await supabase
       .from('matches')
-      .select('id')
+      .delete()
       .eq('tournament_id', tournamentId)
-      .eq('match_type', 'bracket')
-      .limit(1);
-
-    if (error) return { inserted: 0, bracketSize: 0, rounds: 0, errors: [`Failed to check existing bracket: ${error.message}`] };
-    if ((existing ?? []).length > 0) {
-      // Unconditionally remove existing bracket matches before generating anew
-      const { error: delErr } = await supabase
-        .from('matches')
-        .delete()
-        .eq('tournament_id', tournamentId)
-        .eq('match_type', 'bracket');
-      if (delErr) {
-        return { inserted: 0, bracketSize: 0, rounds: 0, errors: [`Failed to delete existing bracket: ${delErr.message}`] };
-      }
+      .eq('match_type', 'bracket');
+    if (delErr) {
+      return { inserted: 0, bracketSize: 0, rounds: 0, errors: [`Failed to delete existing bracket: ${delErr.message}`] };
     }
   }
 
@@ -370,8 +359,15 @@ export async function generateBracket(tournamentId: string): Promise<{ inserted:
   // Prepare rows to insert
   let totalInserted = 0;
   const rows: any[] = [];
+  const seenKeys = new Set<string>();
 
   function pushRow(bracket_round: number, bracket_match_index: number, team1_id: string | null, team2_id: string | null) {
+    const k = `${bracket_round}:${bracket_match_index}`;
+    if (seenKeys.has(k)) {
+      // Avoid duplicate (round, index) which violates matches_bracket_round_index_uidx
+      return;
+    }
+    seenKeys.add(k);
     rows.push({
       tournament_id: tournamentId,
       pool_id: null,
@@ -391,35 +387,56 @@ export async function generateBracket(tournamentId: string): Promise<{ inserted:
     });
   }
 
-  // Build bracket level-by-level
-  let prevLevel = level0.slice();
-  for (let r = 1; r <= rounds; r++) {
-    const matchCount = B >> r;
-    const nextLevel: (string | null)[] = Array.from({ length: matchCount }, () => null);
+  // Build bracket with preliminary matches only where both teams are present (no R1 BYE matches).
+  // BYE seeds are pre-placed into Round 2 on the appropriate side; prelim winners feed into that side's opponent.
+  // Rounds 3+ start as TBD and will be populated as winners advance.
+  const r1Pairs = B >> 1;      // standard total R1 pairs in a full bracket
+  const r2Matches = B >> 2;    // standard total R2 matches
 
-    for (let i = 0; i < matchCount; i++) {
-      const a = prevLevel[2 * i] ?? null;
-      const b = prevLevel[2 * i + 1] ?? null;
+  // Pre-allocate Round 2 sides
+  const r2Team1: (string | null)[] = Array.from({ length: r2Matches }, () => null);
+  const r2Team2: (string | null)[] = Array.from({ length: r2Matches }, () => null);
 
-      if (r === 1) {
-        // Always create full Round 1 shape; null side indicates a BYE
-        pushRow(r, i, a, b);
+  // Scan standard Round 1 pairs and either create prelim matches or place byes into Round 2
+  for (let i = 0; i < r1Pairs; i++) {
+    const a = level0[2 * i] ?? null;
+    const b = level0[2 * i + 1] ?? null;
+    const j = Math.floor(i / 2);
+    const sideIsTeam1 = (i % 2 === 0);
+
+    if (a && b) {
+      // Preliminary match actually played in Round 1 (no BYE)
+      pushRow(1, i, a, b);
+    } else if (a || b) {
+      // BYE: promote existing team into Round 2 appropriate side
+      const id = (a || b) as string;
+      if (sideIsTeam1) {
+        r2Team1[j] = id;
       } else {
-        // Later rounds start as TBD on both sides (avoid premature pre-fills)
-        pushRow(r, i, null, null);
+        r2Team2[j] = id;
       }
-
-      // Determine who carries to the next level (automatic advancement on byes for internal mapping only)
-      if (a && !b) nextLevel[i] = a;
-      else if (!a && b) nextLevel[i] = b;
-      else nextLevel[i] = null; // decided by earlier round winner
+    } else {
+      // both null -> nothing to create
     }
+  }
 
-    prevLevel = nextLevel;
+  // Create Round 2 matches, prefilled with any bye seed placed above
+  for (let j = 0; j < r2Matches; j++) {
+    pushRow(2, j, r2Team1[j], r2Team2[j]);
+  }
+
+  // Create later rounds as TBD
+  for (let r = 3; r <= rounds; r++) {
+    const matchCount = B >> r;
+    for (let i = 0; i < matchCount; i++) {
+      pushRow(r, i, null, null);
+    }
   }
 
   if (rows.length > 0) {
-    const { error: insertErr } = await supabase.from('matches').insert(rows);
+    const { error: insertErr } = await supabase
+      .from('matches')
+      .insert(rows);
     if (insertErr) {
       errors.push(`Failed to insert bracket matches: ${insertErr.message}`);
     } else {

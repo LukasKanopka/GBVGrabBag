@@ -44,7 +44,7 @@ Source of truth: Product Requirements at [PRD.md](PRD.md)
 ### Phase B — Admin Foundations
 1. Players Import (AdminPlayersImport.vue)
    - Build CSV upload using Papaparse; preview table with de-duplication (case-insensitive)
-   - Bulk insert: teams rows with seeded_player_name and full_team_name = seeded_player_name; partner_name null; pool_id null; seed_in_pool null
+   - Bulk insert: teams rows with seeded_player_name and full_team_name = seeded_player_name; pool_id null; seed_in_pool null
    - Manual add/remove/edit row UI
    - Acceptance: Duplicates prevented; invalid CSV errors shown; rows persist to DB
 
@@ -55,7 +55,7 @@ Source of truth: Product Requirements at [PRD.md](PRD.md)
    - Acceptance: Pool assignment and seeds persist; no seed conflicts; UX reflects errors
 
 3. Partner Assignment (AdminPartnerAssignment.vue)
-   - Mobile-first list of seeded players; tap to enter partner_name
+   - Mobile-first list of seeded players; tap to enter partner name
    - Auto update full_team_name as Seeded + Partner
    - Completeness indicator and filter for “missing partner”
    - Acceptance: Partner names persist; team names update; completeness turns 100 percent when all set

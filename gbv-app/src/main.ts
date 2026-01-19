@@ -6,6 +6,7 @@ import 'primeicons/primeicons.css';
 import ToastService from 'primevue/toastservice';
 import router from './router';
 import './style.css';
+import './styles/bracket-theme.css';
 import App from './App.vue';
 
 const app = createApp(App);

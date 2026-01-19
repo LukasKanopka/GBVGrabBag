@@ -59,7 +59,6 @@ const round1Count = computed(() => {
   const r1 = grouped.value.find(([r]) => r === 1);
   return r1 ? r1[1].length : 0;
 });
-const bracketSize = computed(() => Math.max(2, round1Count.value * 2));
 
 // Layout constants
 const COL_WIDTH = 260; // px for each round column

@@ -1,0 +1,75 @@
+/* Opt-in wrapper: place this class on the container that wraps <Bracket> */
+.gbv-bracket-theme {
+  /* container framing (rounded/ring/bg) remains in template via Tailwind */
+}
+
+/* Ensure library container blends with our panel; keep text readable */
+.gbv-bracket-theme .vtb-wrapper {
+  display: flex; /* increase selector specificity while preserving default layout */
+  color: #fff;
+}
+
+/* Player stack container: no gray slab; individual players are tiles */
+.gbv-bracket-theme .vtb-item-players {
+  background: transparent;
+  margin: 0;
+  color: #fff;
+}
+
+/* Team/match boxes (players) — rounded, semitransparent, white ring */
+.gbv-bracket-theme .vtb-item-players .vtb-player {
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.10);
+  border: 1px solid rgba(255, 255, 255, 0.20);
+  padding: 8px 10px;
+  line-height: 1.1;
+  transition: background-color 0.15s ease-in-out, border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
+  color: #fff;
+}
+
+/* Small vertical separation between the two rows */
+.gbv-bracket-theme .vtb-item-players .vtb-player + .vtb-player {
+  margin-top: 6px;
+}
+
+/* Hover: gentle lift in brightness */
+.gbv-bracket-theme .vtb-item-players .vtb-player:hover {
+  background: rgba(255, 255, 255, 0.15);
+  border-color: rgba(255, 255, 255, 0.30);
+}
+
+/* Winner/defeated state: subtle deltas; dark-theme friendly */
+.gbv-bracket-theme .vtb-item-players .winner {
+  background: rgba(255, 255, 255, 0.18);
+  border-color: rgba(255, 255, 255, 0.35);
+}
+.gbv-bracket-theme .vtb-item-players .defeated {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.20);
+  opacity: 0.95;
+}
+
+/* Highlight (hover-driven from lib): subtle inner ring */
+.gbv-bracket-theme .vtb-item-players .winner.highlight,
+.gbv-bracket-theme .vtb-item-players .defeated.highlight {
+  box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.50);
+}
+
+/* Connectors (horizontal and vertical pseudo-elements) — unify to semiwhite lines */
+.gbv-bracket-theme .vtb-item-parent::after,
+.gbv-bracket-theme .vtb-item-child::before,
+.gbv-bracket-theme .vtb-item-child::after {
+  background-color: rgba(255, 255, 255, 0.45);
+}
+
+/* Optional: slightly tighter column spacing to match Admin custom view */
+.gbv-bracket-theme .vtb-item-parent {
+  margin-left: 48px; /* library default is ~50px */
+}
+
+/* Safe text defaults inside players if slots omit text classes */
+.gbv-bracket-theme .vtb-item-players .vtb-player :where(span, div, p) {
+  color: inherit;
+  font-weight: 600;
+  font-size: 0.9rem;
+}

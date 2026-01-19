@@ -15,7 +15,6 @@ type TeamRow = {
   id: string;
   pooled_name: string; // "Pool A #1" or "Unassigned"
   seeded_player_name: string;
-  partner_name: string | null;
   full_team_name: string;
   pool_id: string | null;
   seed_in_pool: number | null;
@@ -33,11 +32,26 @@ const teams = ref<TeamRow[]>([]);
 const onlyMissing = ref<boolean>(true);
 const searchText = ref<string>('');
 
+function isPartnerAssigned(row: { seeded_player_name: string; full_team_name: string }) {
+  const seeded = (row.seeded_player_name || '').trim().toLowerCase();
+  const full = (row.full_team_name || '').trim().toLowerCase();
+  return !!seeded && !!full && full !== seeded;
+}
+
+function parsePartnerFromFullName(seedName: string, fullName: string) {
+  const seeded = (seedName || '').trim();
+  const full = (fullName || '').trim();
+  if (!seeded || !full) return '';
+  const prefix = `${seeded} + `;
+  if (full.toLowerCase().startsWith(prefix.toLowerCase())) {
+    return full.slice(prefix.length).trim();
+  }
+  return '';
+}
+
 // Derived
 const totalCount = computed(() => teams.value.length);
-const assignedCount = computed(
-  () => teams.value.filter((t) => !!t.partner_name && t.partner_name.trim() !== '').length
-);
+const assignedCount = computed(() => teams.value.filter((t) => isPartnerAssigned(t)).length);
 const completeness = computed(() => {
   if (totalCount.value === 0) return 0;
   return Math.round((assignedCount.value / totalCount.value) * 100);
@@ -48,15 +62,14 @@ const displayRows = computed(() => {
   let rows = teams.value.slice();
 
   if (onlyMissing.value) {
-    rows = rows.filter((t) => !t.partner_name || t.partner_name.trim() === '');
+    rows = rows.filter((t) => !isPartnerAssigned(t));
   }
   if (q) {
     rows = rows.filter((t) => {
       const pooled = (t.pooled_name || '').toLowerCase();
       const seeded = (t.seeded_player_name || '').toLowerCase();
-      const partner = (t.partner_name || '').toLowerCase();
       const full = (t.full_team_name || '').toLowerCase();
-      return pooled.includes(q) || seeded.includes(q) || partner.includes(q) || full.includes(q);
+      return pooled.includes(q) || seeded.includes(q) || full.includes(q);
     });
   }
 
@@ -117,7 +130,7 @@ async function loadTeams() {
 
   const { data, error } = await supabase
     .from('teams')
-    .select('id,seeded_player_name,partner_name,full_team_name,pool_id,seed_in_pool')
+    .select('id,seeded_player_name,full_team_name,pool_id,seed_in_pool')
     .eq('tournament_id', session.tournament.id);
 
   if (error) {
@@ -135,7 +148,6 @@ async function loadTeams() {
       id: t.id,
       pooled_name: pooled,
       seeded_player_name: t.seeded_player_name,
-      partner_name: t.partner_name,
       full_team_name: t.full_team_name,
       pool_id: t.pool_id,
       seed_in_pool: t.seed_in_pool,
@@ -145,7 +157,7 @@ async function loadTeams() {
   teams.value = rows;
   // initialize partner inputs
   const inputs: Record<string, string> = {};
-  rows.forEach((r) => (inputs[r.id] = r.partner_name ?? ''));
+  rows.forEach((r) => (inputs[r.id] = parsePartnerFromFullName(r.seeded_player_name, r.full_team_name)));
   partnerInput.value = inputs;
 }
 
@@ -167,17 +179,15 @@ async function savePartner(teamId: string) {
     const { error } = await supabase
       .from('teams')
       .update({
-        partner_name: partner || null,
         full_team_name: fullName,
       })
       .eq('id', teamId);
 
     if (error) throw error;
 
-    row.partner_name = partner || null;
     row.full_team_name = fullName;
 
-    toast.add({ severity: 'success', summary: 'Partner saved', life: 1200 });
+    toast.add({ severity: 'success', summary: 'Saved', life: 1200 });
   } catch (err: any) {
     toast.add({ severity: 'error', summary: 'Save failed', detail: err?.message ?? 'Unknown error', life: 3000 });
   } finally {

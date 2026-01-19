@@ -77,7 +77,6 @@ export interface Team {
   tournament_id: UUID;
   pool_id: UUID | null; // may be null before pools assigned
   seeded_player_name: string;
-  partner_name: string | null;
   full_team_name: string; // "{Seeded Player} + {Partner}" once partner assigned
   seed_in_pool: number | null; // 1,2,3,... within the pool
   seed_global: number | null;   // tournament-wide seed based on import order

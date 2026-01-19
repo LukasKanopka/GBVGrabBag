@@ -38,41 +38,9 @@ const loading = ref(false);
 const matches = ref<Match[]>([]);
 const teamNameById = ref<Record<string, string>>({});
 
-const maxRound = computed(() => Math.max(0, ...matches.value.map(m => m.bracket_round || 0)));
-
-function roundTitle(r: number) {
-  const mr = maxRound.value;
-  if (mr <= 1) return 'Final';
-  if (mr === 2) return r === 1 ? 'Semifinals' : 'Final';
-  if (mr === 3) return r === 1 ? 'Quarterfinals' : r === 2 ? 'Semifinals' : 'Final';
-  // Fallback
-  return `Round ${r}`;
-}
-
 function nameFor(id: string | null) {
   if (!id) return 'TBD';
   return teamNameById.value[id] || 'TBD';
-}
-
-function groupedByRound() {
-  const map = new Map<number, Match[]>();
-  for (const m of matches.value) {
-    const r = m.bracket_round || 1;
-    const arr = map.get(r) ?? [];
-    arr.push(m);
-    map.set(r, arr);
-  }
-  // sort each round by bracket_match_index for proper visual order
-  const entries = Array.from(map.entries()).sort((a, b) => a[0] - b[0]);
-  return entries.map(([r, arr]) => [
-    r,
-    arr.sort((a, b) => {
-      const ai = (a.bracket_match_index ?? Number.MAX_SAFE_INTEGER);
-      const bi = (b.bracket_match_index ?? Number.MAX_SAFE_INTEGER);
-      if (ai !== bi) return ai - bi;
-      return a.id.localeCompare(b.id);
-    })
-  ] as const);
 }
 
 const bracketData = computed(() => {
@@ -87,7 +55,7 @@ const bracketData = computed(() => {
 
   const roundsSorted = Array.from(byRound.entries()).sort((a, b) => a[0] - b[0]);
 
-  return roundsSorted.map(([r, arr]) => {
+  return roundsSorted.map(([, arr]) => {
     const games = arr
       .slice()
       .sort((a, b) => {
@@ -100,37 +68,23 @@ const bracketData = computed(() => {
         const winId = (m as any).winner_id as string | null | undefined;
         const p1Id = m.team1_id;
         const p2Id = m.team2_id;
-        const bothPresent = !!p1Id && !!p2Id;
 
-        // winner flag rules:
-        // - if winner_id exists, set true/false accordingly
-        // - if one side is BYE and no winner_id, favor the non-BYE side
-        // - if both present and no winner yet, set null (neutral)
-        const p1Winner =
-          p1Id
-            ? (winId != null
-                ? winId === p1Id
-                : (bothPresent ? null : (!!p1Id && !p2Id ? true : null)))
-            : false;
-
-        const p2Winner =
-          p2Id
-            ? (winId != null
-                ? winId === p2Id
-                : (bothPresent ? null : (!!p2Id && !p1Id ? true : null)))
-            : false;
+        // winner flag: only set when winner_id is present; otherwise neutral
+        const hasWinner = !!winId;
+        const p1Winner = hasWinner ? (p1Id ? (winId === p1Id) : null) : null;
+        const p2Winner = hasWinner ? (p2Id ? (winId === p2Id) : null) : null;
 
         return {
           // carry through a stable identifier so we can open the match
           id: m.id,
           player1: {
-            id: p1Id ?? `bye-${m.id}-1`,
-            name: p1Id ? nameFor(p1Id) : 'BYE',
+            id: p1Id ?? `tbd-${m.id}-1`,
+            name: p1Id ? nameFor(p1Id) : 'TBD',
             winner: p1Winner,
           },
           player2: {
-            id: p2Id ?? `bye-${m.id}-2`,
-            name: p2Id ? nameFor(p2Id) : 'BYE',
+            id: p2Id ?? `tbd-${m.id}-2`,
+            name: p2Id ? nameFor(p2Id) : 'TBD',
             winner: p2Winner,
           },
         };

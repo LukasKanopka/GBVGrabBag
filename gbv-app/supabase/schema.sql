@@ -34,9 +34,6 @@ create table if not exists public.pools (
 create unique index if not exists pools_tournament_name_uidx on public.pools(tournament_id, name);
 create index if not exists pools_tournament_idx on public.pools(tournament_id);
 
--- Backward-compatible migration for existing databases
-alter table public.pools add column if not exists target_size integer;
-
 -- =========================
 -- teams
 -- =========================
@@ -45,24 +42,16 @@ create table if not exists public.teams (
   tournament_id uuid not null references public.tournaments(id) on delete cascade,
   pool_id uuid references public.pools(id) on delete set null,
   seeded_player_name text not null,
-  partner_name text,
   full_team_name text not null,
   seed_in_pool integer,
-  constraint seed_in_pool_positive check (seed_in_pool is null or seed_in_pool >= 1)
+  seed_global integer,
+  constraint seed_in_pool_positive check (seed_in_pool is null or seed_in_pool >= 1),
+  constraint seed_global_positive check (seed_global is null or seed_global >= 1)
 );
 
 create unique index if not exists teams_pool_seed_uidx on public.teams(pool_id, seed_in_pool) where pool_id is not null and seed_in_pool is not null;
 create index if not exists teams_tournament_idx on public.teams(tournament_id);
 create index if not exists teams_pool_idx on public.teams(pool_id);
-
--- =========================
--- Global tournament seed per player (seed_global)
--- =========================
-alter table public.teams add column if not exists seed_global integer;
-
--- Ensure positive seed or null
-alter table public.teams drop constraint if exists seed_global_positive;
-alter table public.teams add constraint seed_global_positive check (seed_global is null or seed_global >= 1);
 
 -- Unique per tournament when present
 create unique index if not exists teams_tournament_seed_global_uidx
@@ -88,6 +77,7 @@ create table if not exists public.matches (
   winner_id uuid references public.teams(id) on delete set null,
   match_type text not null check (match_type in ('pool','bracket')),
   bracket_round integer, -- for bracket play
+  bracket_match_index integer, -- stable per-round index for ordering
   is_live boolean not null default false,
   live_score_team1 integer,
   live_score_team2 integer
@@ -102,9 +92,6 @@ create index if not exists idx_matches_team1 on public.matches(team1_id);
 create index if not exists idx_matches_team2 on public.matches(team2_id);
 create index if not exists idx_matches_ref_team on public.matches(ref_team_id);
 create index if not exists idx_matches_winner on public.matches(winner_id);
-
--- Bracket indexing: stable per-round index and ordering
-alter table public.matches add column if not exists bracket_match_index integer;
 
 -- Unique index for bracket matches per tournament, round, and index
 create unique index if not exists matches_bracket_round_index_uidx
@@ -164,6 +151,9 @@ drop policy if exists "matches_update_public" on public.matches;
 create policy "matches_write_public" on public.matches for insert to public with check (true);
 
 create policy "matches_update_public" on public.matches for update to public using (true) with check (true);
+-- Allow delete on matches for authenticated (admin) users
+drop policy if exists "matches_delete_authenticated" on public.matches;
+create policy "matches_delete_authenticated" on public.matches for delete to authenticated using (true);
 
 -- Admin write access (authenticated) — split FOR ALL into explicit policies (do NOT use FOR ALL)
 -- tournaments
