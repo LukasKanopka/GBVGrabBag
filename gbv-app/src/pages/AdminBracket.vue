@@ -26,6 +26,10 @@ type Match = {
   team1_id: UUID | null;
   team2_id: UUID | null;
   is_live: boolean;
+  live_score_team1: number | null;
+  live_score_team2: number | null;
+  live_owner_id: UUID | null;
+  live_last_active_at: string | null;
   winner_id: UUID | null;
   match_type: 'pool' | 'bracket';
   bracket_round: number | null;
@@ -165,7 +169,7 @@ async function loadMatches() {
   }
   const { data, error } = await supabase
     .from('matches')
-    .select('id,tournament_id,pool_id,round_number,team1_id,team2_id,is_live,winner_id,match_type,bracket_round,bracket_match_index')
+    .select('id,tournament_id,pool_id,round_number,team1_id,team2_id,is_live,live_score_team1,live_score_team2,live_owner_id,live_last_active_at,winner_id,match_type,bracket_round,bracket_match_index')
     .eq('tournament_id', session.tournament.id)
     .eq('match_type', 'bracket')
     .order('bracket_round', { ascending: true })

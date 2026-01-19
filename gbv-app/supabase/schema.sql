@@ -80,8 +80,15 @@ create table if not exists public.matches (
   bracket_match_index integer, -- stable per-round index for ordering
   is_live boolean not null default false,
   live_score_team1 integer,
-  live_score_team2 integer
+  live_score_team2 integer,
+  -- Live scoring session control (prevents concurrent controllers; reclaimed after timeout)
+  live_owner_id uuid, -- auth.users.id (including anonymous users)
+  live_last_active_at timestamptz
 );
+
+-- Idempotent: ensure new live-scoring session columns exist on existing DBs
+alter table public.matches add column if not exists live_owner_id uuid;
+alter table public.matches add column if not exists live_last_active_at timestamptz;
 
 create index if not exists matches_tournament_idx on public.matches(tournament_id);
 create index if not exists matches_pool_idx on public.matches(pool_id);
@@ -92,6 +99,8 @@ create index if not exists idx_matches_team1 on public.matches(team1_id);
 create index if not exists idx_matches_team2 on public.matches(team2_id);
 create index if not exists idx_matches_ref_team on public.matches(ref_team_id);
 create index if not exists idx_matches_winner on public.matches(winner_id);
+create index if not exists idx_matches_live_owner on public.matches(live_owner_id);
+create index if not exists idx_matches_live_last_active on public.matches(live_last_active_at);
 
 -- Unique index for bracket matches per tournament, round, and index
 create unique index if not exists matches_bracket_round_index_uidx

@@ -2,7 +2,6 @@
 import { ref, onMounted, onBeforeUnmount, computed } from 'vue';
 import { useRoute } from 'vue-router';
 import { useSessionStore } from '../stores/session';
-import Button from 'primevue/button';
 import { useToast } from 'primevue/usetoast';
 import supabase from '../lib/supabase';
 import PublicLayout from '../components/layout/PublicLayout.vue';
@@ -16,6 +15,7 @@ type Match = {
   is_live: boolean;
   live_score_team1: number | null;
   live_score_team2: number | null;
+  live_last_active_at: string | null;
   match_type: 'pool' | 'bracket';
   round_number: number | null;
 };
@@ -34,6 +34,7 @@ const score2 = ref<number>(0);
 const isLive = ref<boolean>(false);
 const matchLabel = ref<string>('No live match');
 const matchType = ref<'pool' | 'bracket' | null>(null);
+const LIVE_STALE_MS = 4 * 60 * 1000;
 
 // team names cache
 const teamNameById = ref<Record<string, string>>({});
@@ -76,6 +77,14 @@ function setFromMatch(m: Match | null) {
     matchLabel.value = 'No live match';
     return;
   }
+  if (m.live_last_active_at) {
+    const t = Date.parse(m.live_last_active_at);
+    if (Number.isFinite(t) && (Date.now() - t) > LIVE_STALE_MS) {
+      // stale session: don't show as live
+      setFromMatch(null);
+      return;
+    }
+  }
   liveMatchId.value = m.id;
   team1Id.value = m.team1_id;
   team2Id.value = m.team2_id;
@@ -92,7 +101,7 @@ async function loadCurrentLiveMatch() {
   // get first live match for this tournament
   const { data, error } = await supabase
     .from('matches')
-    .select('id,tournament_id,team1_id,team2_id,is_live,live_score_team1,live_score_team2,match_type,round_number')
+    .select('id,tournament_id,team1_id,team2_id,is_live,live_score_team1,live_score_team2,live_last_active_at,match_type,round_number')
     .eq('tournament_id', session.tournament.id)
     .eq('is_live', true)
     .limit(1);
@@ -101,121 +110,6 @@ async function loadCurrentLiveMatch() {
     return;
   }
   setFromMatch((data as Match[])[0] ?? null);
-}
-
-async function applyScoreUpdate(newS1: number, newS2: number) {
-  if (!liveMatchId.value) return;
-  const { error } = await supabase
-    .from('matches')
-    .update({
-      live_score_team1: newS1,
-      live_score_team2: newS2,
-      is_live: true,
-    })
-    .eq('id', liveMatchId.value);
-  if (error) {
-    toast.add({ severity: 'error', summary: 'Update failed', detail: error.message, life: 2500 });
-  }
-}
-
-async function inc(team: 1 | 2) {
-  const ns1 = team === 1 ? score1.value + 1 : score1.value;
-  const ns2 = team === 2 ? score2.value + 1 : score2.value;
-  score1.value = ns1;
-  score2.value = ns2;
-  await applyScoreUpdate(ns1, ns2);
-}
-
-async function dec(team: 1 | 2) {
-  const ns1 = team === 1 ? Math.max(0, score1.value - 1) : score1.value;
-  const ns2 = team === 2 ? Math.max(0, score2.value - 1) : score2.value;
-  score1.value = ns1;
-  score2.value = ns2;
-  await applyScoreUpdate(ns1, ns2);
-}
-
-async function flipScores() {
-  const ns1 = score2.value;
-  const ns2 = score1.value;
-  score1.value = ns1;
-  score2.value = ns2;
-  // Names flip purely visual
-  const t1 = team1Id.value;
-  team1Id.value = team2Id.value;
-  team2Id.value = t1;
-  await applyScoreUpdate(ns1, ns2);
-}
-
-// Game rules and winner detection
-type RuleSet = { target: number; cap?: number | null; winBy2: boolean };
-
-function getActiveRuleSet(): RuleSet {
-  const gr = session.tournament?.game_rules;
-  const mt = matchType.value ?? 'pool';
-  const phase = mt === 'bracket' ? gr?.bracket : gr?.pool;
-  const target = phase?.setTarget ?? 21;
-  const cap = phase?.cap ?? 25;
-  const winBy2 = phase?.winBy2 ?? true;
-  return { target, cap, winBy2 };
-}
-
-const hasWinner = computed(() => {
-  const r = getActiveRuleSet();
-  const s1 = score1.value ?? 0;
-  const s2 = score2.value ?? 0;
-  const high = Math.max(s1, s2);
-  const lead = Math.abs(s1 - s2);
-  if (r.winBy2) {
-    if (r.cap != null && high >= r.cap) return true; // cap reached
-    return high >= r.target && lead >= 2;
-  }
-  return high >= r.target;
-});
-
-const winnerId = computed<string | null>(() => {
-  const s1 = score1.value ?? 0;
-  const s2 = score2.value ?? 0;
-  if (!team1Id.value || !team2Id.value) return null;
-  if (s1 === s2) return null;
-  return s1 > s2 ? team1Id.value : team2Id.value;
-});
-
-async function submitFinal() {
-  if (!liveMatchId.value) return;
-  const winId = winnerId.value;
-  if (!hasWinner.value || !winId) {
-    toast.add({ severity: 'warn', summary: 'Winner not clear', detail: 'Scores do not meet win conditions.', life: 2200 });
-    return;
-  }
-
-  const { error } = await supabase
-    .from('matches')
-    .update({
-      team1_score: score1.value ?? 0,
-      team2_score: score2.value ?? 0,
-      winner_id: winId,
-      is_live: false,
-      live_score_team1: null,
-      live_score_team2: null,
-    })
-    .eq('id', liveMatchId.value);
-
-  if (error) {
-    toast.add({ severity: 'error', summary: 'Submit failed', detail: error.message, life: 3000 });
-    return;
-  }
-
-  // If bracket match, mark bracket_started on first scoring activity
-  if (matchType.value === 'bracket' && session.tournament) {
-    await supabase
-      .from('tournaments')
-      .update({ bracket_started: true })
-      .eq('id', session.tournament.id)
-      .eq('bracket_started', false);
-  }
-
-  toast.add({ severity: 'success', summary: 'Final submitted', life: 1600 });
-  setFromMatch(null);
 }
 
 let channel: ReturnType<typeof supabase.channel> | null = null;
@@ -290,7 +184,7 @@ onBeforeUnmount(async () => {
           <h2 class="text-2xl font-semibold text-white">Live Scoreboard</h2>
           <div
             v-if="isLive"
-            class="inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-wide text-white gbv-grad-orange"
+            class="inline-flex items-center gap-2 rounded-full bg-red-600 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-white"
             aria-label="Live indicator"
           >
             <span class="size-2 rounded-full bg-white/90"></span>
@@ -319,63 +213,12 @@ onBeforeUnmount(async () => {
             <div class="mt-6 grid grid-cols-2 gap-6">
               <div class="flex flex-col items-center">
                 <div class="text-7xl sm:text-8xl font-black tabular-nums text-gbv-blue">{{ score1 }}</div>
-                <div class="mt-4 flex gap-3">
-                  <Button
-                    label="+1"
-                    size="large"
-                    class="!rounded-2xl !px-5 !py-4 !text-xl font-bold border-none text-white gbv-grad-blue"
-                    @click="inc(1)"
-                  />
-                  <Button
-                    label="-1"
-                    size="large"
-                    severity="secondary"
-                    class="!rounded-2xl !px-5 !py-4 !text-xl"
-                    @click="dec(1)"
-                  />
-                </div>
               </div>
 
               <div class="flex flex-col items-center">
                 <div class="text-7xl sm:text-8xl font-black tabular-nums text-gbv-orange">{{ score2 }}</div>
-                <div class="mt-4 flex gap-3">
-                  <Button
-                    label="+1"
-                    size="large"
-                    class="!rounded-2xl !px-5 !py-4 !text-xl font-bold border-none text-white gbv-grad-orange"
-                    @click="inc(2)"
-                  />
-                  <Button
-                    label="-1"
-                    size="large"
-                    severity="secondary"
-                    class="!rounded-2xl !px-5 !py-4 !text-xl"
-                    @click="dec(2)"
-                  />
-                </div>
               </div>
             </div>
-
-            <div class="mt-6 flex justify-center">
-              <Button
-                label="Flip Sides"
-                size="large"
-                icon="pi pi-refresh"
-                class="!rounded-2xl !px-6 !py-4 !text-lg"
-                severity="contrast"
-                @click="flipScores"
-              />
-            </div>
-          </div>
-
-          <div v-if="isLive && hasWinner" class="mt-4 flex justify-center">
-            <Button
-              label="Submit Final Score"
-              size="large"
-              icon="pi pi-check-circle"
-              class="!rounded-2xl !px-6 !py-4 !text-lg !font-semibold border-none text-white gbv-grad-blue"
-              @click="submitFinal"
-            />
           </div>
 
           <div class="rounded-xl border border-dashed border-white/30 p-6 text-center text-white/80">

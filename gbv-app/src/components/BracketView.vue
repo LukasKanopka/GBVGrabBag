@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref, onMounted, onBeforeUnmount } from 'vue';
 
 type UUID = string;
 
@@ -11,6 +11,9 @@ export interface BracketMatch {
   team2_id: UUID | null;
   winner_id?: UUID | null;
   is_live?: boolean | null;
+  live_score_team1?: number | null;
+  live_score_team2?: number | null;
+  live_last_active_at?: string | null;
 }
 
 const props = defineProps<{
@@ -115,6 +118,28 @@ function tileLeftXFor(round: number): number {
 
 function tileRightXFor(round: number): number {
   return colStartXFor(round) + TILE_WIDTH;
+}
+
+const LIVE_STALE_MS = 4 * 60 * 1000;
+const now = ref<number>(Date.now());
+let nowTimer: ReturnType<typeof setInterval> | null = null;
+onMounted(() => {
+  nowTimer = setInterval(() => (now.value = Date.now()), 15_000);
+});
+onBeforeUnmount(() => {
+  if (nowTimer) {
+    clearInterval(nowTimer);
+    nowTimer = null;
+  }
+});
+
+function isLiveActive(m: BracketMatch): boolean {
+  if (!m.is_live) return false;
+  const ts = m.live_last_active_at ?? null;
+  if (!ts) return true;
+  const t = Date.parse(ts);
+  if (!Number.isFinite(t)) return true;
+  return (now.value - t) <= LIVE_STALE_MS;
 }
 
 // Helpers to detect BYE in Round 1
@@ -326,7 +351,7 @@ function onOpen(m: BracketMatch) {
               :class="{
                 'match-tile--disabled': isDisabled(m),
                 'match-tile--done': !!winnerSide(m),
-                'match-tile--live': !!m.is_live
+                'match-tile--live': isLiveActive(m)
               }"
               :style="{
                 position: 'absolute',
@@ -358,7 +383,10 @@ function onOpen(m: BracketMatch) {
                 </div>
 
                 <div class="tile-meta">
-                  {{ courtLabelFor(m) }} • {{ refLabelFor(m) }}
+                  <span class="tile-meta-left">{{ courtLabelFor(m) }} • {{ refLabelFor(m) }}</span>
+                  <span v-if="isLiveActive(m)" class="live-pill">
+                    LIVE <span class="tabular-nums">{{ m.live_score_team1 ?? 0 }}-{{ m.live_score_team2 ?? 0 }}</span>
+                  </span>
                 </div>
               </template>
             </div>
@@ -532,14 +560,36 @@ function onOpen(m: BracketMatch) {
 .tile-meta {
   display: flex;
   align-items: center;
+  justify-content: space-between;
+  gap: 8px;
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
   font-size: 0.72rem;
   font-weight: 650;
   color: rgba(255,255,255,0.72);
   padding: 1px 6px 2px 6px;
+}
+
+.tile-meta-left {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.live-pill {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: 999px;
+  background: rgba(220,38,38,0.92);
+  color: white;
+  padding: 2px 8px;
+  font-size: 0.65rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
 }
 
 .pill {

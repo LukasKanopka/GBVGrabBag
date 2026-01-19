@@ -103,6 +103,8 @@ export interface Match {
   is_live: boolean;
   live_score_team1: number | null;
   live_score_team2: number | null;
+  live_owner_id?: UUID | null;
+  live_last_active_at?: string | null;
 }
 
 /**

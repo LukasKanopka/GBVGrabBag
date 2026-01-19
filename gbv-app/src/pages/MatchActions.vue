@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref, computed } from 'vue';
+import { onMounted, onBeforeUnmount, ref, computed } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import Button from 'primevue/button';
 import { useToast } from 'primevue/usetoast';
@@ -20,6 +20,10 @@ type Match = {
   team1_score: number | null;
   team2_score: number | null;
   is_live: boolean;
+  live_score_team1: number | null;
+  live_score_team2: number | null;
+  live_owner_id: UUID | null;
+  live_last_active_at: string | null;
   match_type: 'pool' | 'bracket';
 };
 
@@ -37,6 +41,42 @@ const from = computed(() => (route.query.from as string | undefined) ?? undefine
 const loading = ref(false);
 const match = ref<Match | null>(null);
 const teamNameById = ref<Record<string, string>>({});
+const now = ref<number>(Date.now());
+let nowTimer: ReturnType<typeof setInterval> | null = null;
+
+const LIVE_STALE_MS = 4 * 60 * 1000;
+function isLiveActive(m: Match): boolean {
+  if (!m.is_live) return false;
+  if (!m.live_last_active_at) return true;
+  const t = Date.parse(m.live_last_active_at);
+  if (!Number.isFinite(t)) return true;
+  return (now.value - t) <= LIVE_STALE_MS;
+}
+
+let channel: ReturnType<typeof supabase.channel> | null = null;
+async function subscribeRealtime() {
+  if (!session.tournament || !matchId.value) return;
+  if (channel) {
+    await channel.unsubscribe();
+    channel = null;
+  }
+
+  channel = supabase
+    .channel('match_actions_' + matchId.value)
+    .on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'matches', filter: `id=eq.${matchId.value}` },
+      (payload) => {
+        if (payload.new) {
+          match.value = payload.new as Match;
+        } else if (payload.eventType === 'DELETE' && match.value?.id === matchId.value) {
+          match.value = null;
+        }
+      }
+    );
+
+  await channel.subscribe();
+}
 
 async function ensureTournament() {
   if (!accessCode.value) return;
@@ -56,7 +96,7 @@ async function loadMatch() {
   }
   const { data, error } = await supabase
     .from('matches')
-    .select('id,tournament_id,pool_id,round_number,team1_id,team2_id,ref_team_id,team1_score,team2_score,is_live,match_type')
+    .select('id,tournament_id,pool_id,round_number,team1_id,team2_id,ref_team_id,team1_score,team2_score,is_live,live_score_team1,live_score_team2,live_owner_id,live_last_active_at,match_type')
     .eq('id', matchId.value)
     .eq('tournament_id', session.tournament.id)
     .single();
@@ -94,6 +134,11 @@ function goManual() {
   router.push({ name: 'match-score', params: { accessCode: accessCode.value, matchId: match.value.id }, query: from.value ? { from: from.value } : undefined });
 }
 
+function goLive() {
+  if (!match.value) return;
+  router.push({ name: 'match-live', params: { accessCode: accessCode.value, matchId: match.value.id }, query: from.value ? { from: from.value } : undefined });
+}
+
 const backLabel = computed(() => {
   if (from.value === 'admin-bracket') return 'Back to Admin Bracket';
   if (match.value?.match_type === 'bracket') return 'Back to Bracket';
@@ -120,13 +165,26 @@ function backToContext() {
 
 onMounted(async () => {
   if (accessCode.value) session.setAccessCode(accessCode.value);
+  nowTimer = setInterval(() => (now.value = Date.now()), 15_000);
   loading.value = true;
   try {
     await ensureTournament();
     await loadTeams();
     await loadMatch();
+    await subscribeRealtime();
   } finally {
     loading.value = false;
+  }
+});
+
+onBeforeUnmount(() => {
+  if (nowTimer) {
+    clearInterval(nowTimer);
+    nowTimer = null;
+  }
+  if (channel) {
+    void channel.unsubscribe();
+    channel = null;
   }
 });
 </script>
@@ -143,6 +201,14 @@ onMounted(async () => {
         <div class="flex items-center justify-between">
           <div class="text-sm text-white/80">
             Round {{ match.round_number ?? '—' }} • {{ match.match_type === 'bracket' ? 'Bracket' : 'Pool' }}
+          </div>
+          <div
+            v-if="isLiveActive(match)"
+            class="inline-flex items-center gap-2 rounded-full bg-red-600 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-white"
+          >
+            <span class="size-2 rounded-full bg-white/90"></span>
+            LIVE
+            <span class="tabular-nums">{{ match.live_score_team1 ?? 0 }}-{{ match.live_score_team2 ?? 0 }}</span>
           </div>
         </div>
         <div class="mt-2">
@@ -165,6 +231,14 @@ onMounted(async () => {
             size="large"
             class="!rounded-2xl !px-6 !py-4 !text-lg !font-semibold text-white bg-white/10 ring-1 ring-white/20"
             @click="goManual"
+          />
+          <Button
+            :label="isLiveActive(match) ? 'View Live Score' : 'Enter Live Score'"
+            icon="pi pi-bolt"
+            severity="secondary"
+            size="large"
+            class="!rounded-2xl !px-6 !py-4 !text-lg !font-semibold text-white bg-white/10 ring-1 ring-white/20"
+            @click="goLive"
           />
         </div>
 

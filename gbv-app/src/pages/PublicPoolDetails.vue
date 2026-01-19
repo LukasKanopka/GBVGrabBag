@@ -32,6 +32,10 @@ type Match = {
   team2_score: number | null;
   winner_id: UUID | null;
   is_live: boolean;
+  live_score_team1: number | null;
+  live_score_team2: number | null;
+  live_owner_id: UUID | null;
+  live_last_active_at: string | null;
   match_type: 'pool' | 'bracket';
 };
 
@@ -48,6 +52,17 @@ const pool = ref<Pool | null>(null);
 const teams = ref<Team[]>([]);
 const teamById = ref<Record<string, Team>>({});
 const matches = ref<Match[]>([]);
+const now = ref<number>(Date.now());
+let nowTimer: ReturnType<typeof setInterval> | null = null;
+
+const LIVE_STALE_MS = 4 * 60 * 1000;
+function isLiveActive(m: Match): boolean {
+  if (!m.is_live) return false;
+  if (!m.live_last_active_at) return true;
+  const t = Date.parse(m.live_last_active_at);
+  if (!Number.isFinite(t)) return true;
+  return (now.value - t) <= LIVE_STALE_MS;
+}
 
 type Standing = {
   teamId: UUID;
@@ -129,7 +144,7 @@ async function loadMatches() {
   }
   const { data, error } = await supabase
     .from('matches')
-    .select('id,pool_id,round_number,team1_id,team2_id,ref_team_id,team1_score,team2_score,winner_id,is_live,match_type')
+    .select('id,pool_id,round_number,team1_id,team2_id,ref_team_id,team1_score,team2_score,winner_id,is_live,live_score_team1,live_score_team2,live_owner_id,live_last_active_at,match_type')
     .eq('tournament_id', session.tournament.id)
     .eq('match_type', 'pool')
     .eq('pool_id', poolId.value)
@@ -328,6 +343,7 @@ onMounted(async () => {
   if (accessCode.value) session.setAccessCode(accessCode.value);
   loading.value = true;
   try {
+    nowTimer = setInterval(() => (now.value = Date.now()), 15_000);
     await ensureTournament();
     await loadPool();
     await loadTeams();
@@ -343,6 +359,10 @@ onBeforeUnmount(async () => {
   if (channel) {
     await channel.unsubscribe();
     channel = null;
+  }
+  if (nowTimer) {
+    clearInterval(nowTimer);
+    nowTimer = null;
   }
 });
 </script>
@@ -410,19 +430,31 @@ onBeforeUnmount(async () => {
             <li
               v-for="m in matches"
               :key="m.id"
-              class="cursor-pointer rounded-xl bg-white/10 ring-1 ring-white/20 p-4 hover:bg-white/15 transition-colors text-white"
+              :class="[
+                'cursor-pointer rounded-xl bg-white/10 p-4 hover:bg-white/15 transition-colors text-white',
+                isLiveActive(m) ? 'ring-2 ring-red-500/70' : 'ring-1 ring-white/20',
+              ]"
               @click="openMatch(m.id)"
             >
               <div class="flex items-center justify-between">
                 <div class="text-sm text-white/80">
                   Round {{ m.round_number ?? '—' }}
                 </div>
-                <span
-                  v-if="m.team1_score != null && m.team2_score != null"
-                  class="ml-3 inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-white/10 ring-1 ring-white/20 text-white/90 whitespace-nowrap"
-                >
-                  {{ completedLabel(m) }}
-                </span>
+                <div class="ml-3 flex items-center gap-2">
+                  <span
+                    v-if="isLiveActive(m)"
+                    class="inline-flex items-center gap-2 rounded-full bg-red-600 px-2.5 py-0.5 text-xs font-semibold uppercase tracking-wide text-white whitespace-nowrap"
+                  >
+                    <span class="size-2 rounded-full bg-white/90"></span>
+                    LIVE <span class="tabular-nums">{{ m.live_score_team1 ?? 0 }}-{{ m.live_score_team2 ?? 0 }}</span>
+                  </span>
+                  <span
+                    v-if="m.team1_score != null && m.team2_score != null"
+                    class="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-white/10 ring-1 ring-white/20 text-white/90 whitespace-nowrap"
+                  >
+                    {{ completedLabel(m) }}
+                  </span>
+                </div>
               </div>
               <div class="mt-1">
                 <div class="font-semibold text-white leading-tight">
