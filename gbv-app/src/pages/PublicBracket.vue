@@ -5,7 +5,7 @@ import { useSessionStore } from '../stores/session';
 import { useToast } from 'primevue/usetoast';
 import supabase from '../lib/supabase';
 import PublicLayout from '../components/layout/PublicLayout.vue';
-import Bracket from 'vue-tournament-bracket';
+import BracketView from '../components/BracketView.vue';
 
 type UUID = string;
 
@@ -37,62 +37,6 @@ const loading = ref(false);
 
 const matches = ref<Match[]>([]);
 const teamNameById = ref<Record<string, string>>({});
-
-function nameFor(id: string | null) {
-  if (!id) return 'TBD';
-  return teamNameById.value[id] || 'TBD';
-}
-
-const bracketData = computed(() => {
-  // group by round
-  const byRound = new Map<number, Match[]>();
-  for (const m of matches.value) {
-    const r = m.bracket_round || 1;
-    const arr = byRound.get(r) ?? [];
-    arr.push(m);
-    byRound.set(r, arr);
-  }
-
-  const roundsSorted = Array.from(byRound.entries()).sort((a, b) => a[0] - b[0]);
-
-  return roundsSorted.map(([, arr]) => {
-    const games = arr
-      .slice()
-      .sort((a, b) => {
-        const ai = a.bracket_match_index ?? Number.MAX_SAFE_INTEGER;
-        const bi = b.bracket_match_index ?? Number.MAX_SAFE_INTEGER;
-        if (ai !== bi) return ai - bi;
-        return a.id.localeCompare(b.id);
-      })
-      .map((m) => {
-        const winId = (m as any).winner_id as string | null | undefined;
-        const p1Id = m.team1_id;
-        const p2Id = m.team2_id;
-
-        // winner flag: only set when winner_id is present; otherwise neutral
-        const hasWinner = !!winId;
-        const p1Winner = hasWinner ? (p1Id ? (winId === p1Id) : null) : null;
-        const p2Winner = hasWinner ? (p2Id ? (winId === p2Id) : null) : null;
-
-        return {
-          // carry through a stable identifier so we can open the match
-          id: m.id,
-          player1: {
-            id: p1Id ?? `tbd-${m.id}-1`,
-            name: p1Id ? nameFor(p1Id) : 'TBD',
-            winner: p1Winner,
-          },
-          player2: {
-            id: p2Id ?? `tbd-${m.id}-2`,
-            name: p2Id ? nameFor(p2Id) : 'TBD',
-            winner: p2Winner,
-          },
-        };
-      });
-
-    return { games };
-  });
-});
 
 async function ensureTournament() {
   if (!accessCode.value) return;
@@ -218,20 +162,9 @@ onBeforeUnmount(async () => {
         </div>
 
         <div v-else class="mt-6">
-          <Bracket :rounds="bracketData">
-            <template #player="{ player }">
-              <div class="text-sm font-semibold text-white">
-                {{ player.name }}
-              </div>
-            </template>
-            <template #player-extension-bottom="{ match }">
-              <div class="mt-1">
-                <button class="underline text-white/80 text-xs" @click="openMatchById(match.id)">
-                  View match
-                </button>
-              </div>
-            </template>
-          </Bracket>
+          <div class="-mx-5 sm:-mx-7">
+            <BracketView :matches="matches" :teamNameById="teamNameById" @open="openMatchById" />
+          </div>
         </div>
 
         <div class="mt-8 text-sm text-white/80 text-center">

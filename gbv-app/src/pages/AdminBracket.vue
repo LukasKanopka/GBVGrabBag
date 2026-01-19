@@ -26,6 +26,7 @@ type Match = {
   team1_id: UUID | null;
   team2_id: UUID | null;
   is_live: boolean;
+  winner_id: UUID | null;
   match_type: 'pool' | 'bracket';
   bracket_round: number | null;
   bracket_match_index: number | null;
@@ -132,7 +133,7 @@ async function loadMatches() {
   }
   const { data, error } = await supabase
     .from('matches')
-    .select('id,tournament_id,pool_id,round_number,team1_id,team2_id,is_live,match_type,bracket_round,bracket_match_index')
+    .select('id,tournament_id,pool_id,round_number,team1_id,team2_id,is_live,winner_id,match_type,bracket_round,bracket_match_index')
     .eq('tournament_id', session.tournament.id)
     .eq('match_type', 'bracket')
     .order('bracket_round', { ascending: true })
@@ -464,7 +465,7 @@ onMounted(async () => {
             <div class="border-b border-white/15 px-4 py-3">
               <div class="text-sm font-semibold">Bracket View</div>
             </div>
-            <div class="p-4">
+            <div class="p-2">
               <BracketView
                 :matches="matches"
                 :teamNameById="teamNameById"

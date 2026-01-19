@@ -9,6 +9,7 @@ export interface BracketMatch {
   bracket_match_index: number | null;
   team1_id: UUID | null;
   team2_id: UUID | null;
+  winner_id?: UUID | null;
   is_live?: boolean | null;
 }
 
@@ -61,10 +62,23 @@ const round1Count = computed(() => {
 });
 
 // Layout constants
-const COL_WIDTH = 260; // px for each round column
-const COL_GAP = 32; // px gap between columns
-const TILE_HEIGHT = 56; // px tile height
-const TILE_GAP = 24; // base vertical gap between r1 tiles
+const TITLE_HEIGHT = 32; // px fixed header height per column
+const COL_WIDTH = 230; // px for each round column
+const COL_GAP = 28; // px gap between columns
+const TILE_HEIGHT = 54; // px tile height
+const TILE_GAP = 20; // base vertical gap between r1 tiles
+
+const TILE_WIDTH = COL_WIDTH;
+const bracketWidth = computed(() => {
+  const cols = grouped.value.length;
+  if (!cols) return 0;
+  return cols * COL_WIDTH + (cols - 1) * COL_GAP;
+});
+const bracketHeight = computed(() => {
+  const n = round1Count.value;
+  if (n <= 0) return 0;
+  return n * TILE_HEIGHT + Math.max(0, n - 1) * TILE_GAP;
+});
 
 // Compute center positions for tiles to draw connectors with an overlay SVG
 function centerYFor(round: number, index: number): number {
@@ -87,10 +101,17 @@ function centerYFor(round: number, index: number): number {
   }
 }
 
-function centerXFor(round: number): number {
-  // Column index is round-1
+function colStartXFor(round: number): number {
   const colIndex = round - 1;
-  return colIndex * (COL_WIDTH + COL_GAP) + COL_WIDTH; // right side center of the tile area in the column
+  return colIndex * (COL_WIDTH + COL_GAP);
+}
+
+function tileLeftXFor(round: number): number {
+  return colStartXFor(round);
+}
+
+function tileRightXFor(round: number): number {
+  return colStartXFor(round) + TILE_WIDTH;
 }
 
 // Helpers to detect BYE in Round 1
@@ -101,12 +122,25 @@ function isRound1Bye(m: BracketMatch): boolean {
   return (a && !b) || (!a && b);
 }
 
-function byeLabelFor(m: BracketMatch, side: 1 | 2): string | null {
+function isDisabled(m: BracketMatch): boolean {
+  return isRound1Bye(m);
+}
+
+function byeAdvancingTeamId(m: BracketMatch): string | null {
   if (!isRound1Bye(m)) return null;
-  const a = !!m.team1_id;
-  const b = !!m.team2_id;
-  if (side === 1 && !a && b) return 'BYE';
-  if (side === 2 && !b && a) return 'BYE';
+  return (m.team1_id ?? m.team2_id) ?? null;
+}
+
+function byeAdvancesText(m: BracketMatch): string | null {
+  if (!isRound1Bye(m)) return null;
+  return 'bye-advances';
+}
+
+function winnerSide(m: BracketMatch): 1 | 2 | null {
+  const winId = m.winner_id ?? null;
+  if (!winId) return null;
+  if (m.team1_id && winId === m.team1_id) return 1;
+  if (m.team2_id && winId === m.team2_id) return 2;
   return null;
 }
 
@@ -118,91 +152,130 @@ function roundTitle(round: number): string {
   return `Round ${round}`;
 }
 
-function onOpen(id: string) {
-  emit('open', id);
+function onOpen(m: BracketMatch) {
+  if (isDisabled(m)) return;
+  emit('open', m.id);
 }
 </script>
 
 <template>
-  <div class="bracket-root">
-    <!-- Columns -->
-    <div
-      v-for="[r, arr] in grouped"
-      :key="r"
-      class="bracket-col"
-      :style="{
-        width: COL_WIDTH + 'px',
-        marginRight: (r < roundsCount ? COL_GAP : 0) + 'px'
-      }"
-    >
-      <div v-if="showTitles !== false" class="col-title">{{ roundTitle(r) }}</div>
-
-      <div class="col-body" :style="{ position: 'relative', height: (round1Count * (TILE_HEIGHT + TILE_GAP)) + 'px' }">
+  <div class="bracket-scroll" v-if="grouped.length">
+    <div class="bracket-root" :style="{ minWidth: bracketWidth + 'px' }">
+      <!-- Titles row (separate from connector coordinate space) -->
+      <div v-if="showTitles !== false" class="bracket-head" :style="{ height: TITLE_HEIGHT + 'px' }">
         <div
-          v-for="m in arr"
-          :key="m.id"
-          class="match-tile"
+          v-for="[r] in grouped"
+          :key="r + '-title'"
+          class="col-title"
           :style="{
-            position: 'absolute',
-            top: (centerYFor(r, m.bracket_match_index ?? 0) - TILE_HEIGHT / 2) + 'px',
-            height: TILE_HEIGHT + 'px',
-            width: (COL_WIDTH - 8) + 'px'
+            width: COL_WIDTH + 'px',
+            marginRight: (r < roundsCount ? COL_GAP : 0) + 'px'
           }"
-          @click="onOpen(m.id)"
         >
-          <div class="tile-row">
-            <div class="team-name">
-              <span class="bye" v-if="byeLabelFor(m, 1)">{{ byeLabelFor(m, 1) }}</span>
-              <span v-else>{{ nameFor(m.team1_id) }}</span>
-            </div>
-          </div>
-          <div class="tile-row">
-            <div class="team-name">
-              <span class="bye" v-if="byeLabelFor(m, 2)">{{ byeLabelFor(m, 2) }}</span>
-              <span v-else>{{ nameFor(m.team2_id) }}</span>
+          {{ roundTitle(r) }}
+        </div>
+      </div>
+
+      <!-- Stage is the coordinate origin for tiles + SVG connectors -->
+      <div class="bracket-stage" :style="{ height: bracketHeight + 'px' }">
+        <!-- Columns -->
+        <div
+          v-for="[r, arr] in grouped"
+          :key="r"
+          class="bracket-col"
+          :style="{
+            width: COL_WIDTH + 'px',
+            marginRight: (r < roundsCount ? COL_GAP : 0) + 'px'
+          }"
+        >
+          <div class="col-body" :style="{ position: 'relative', height: bracketHeight + 'px' }">
+            <div
+              v-for="m in arr"
+              :key="m.id"
+              class="match-tile"
+              :class="{
+                'match-tile--disabled': isDisabled(m),
+                'match-tile--done': !!winnerSide(m),
+                'match-tile--live': !!m.is_live
+              }"
+              :style="{
+                position: 'absolute',
+                left: '0px',
+                top: (centerYFor(r, m.bracket_match_index ?? 0) - TILE_HEIGHT / 2) + 'px',
+                height: TILE_HEIGHT + 'px',
+                width: TILE_WIDTH + 'px'
+              }"
+              @click="onOpen(m)"
+            >
+              <!-- BYE match: show advancing team on row 1, "bye-advances" on row 2 (no extra BYE text) -->
+              <template v-if="isRound1Bye(m)">
+                <div class="tile-row" :class="{ 'tile-row--winner': !!winnerSide(m) }">
+                  <div class="team-name">{{ nameFor(byeAdvancingTeamId(m)) }}</div>
+                  <span class="pill pill-winner" v-if="!!winnerSide(m)">WIN</span>
+                </div>
+                <div class="tile-subrow">{{ byeAdvancesText(m) }}</div>
+              </template>
+
+              <template v-else>
+                <div class="tile-row" :class="{ 'tile-row--winner': winnerSide(m) === 1, 'tile-row--loser': !!winnerSide(m) && winnerSide(m) !== 1 }">
+                  <div class="team-name">{{ nameFor(m.team1_id) }}</div>
+                  <span class="pill pill-winner" v-if="winnerSide(m) === 1">WIN</span>
+                </div>
+
+                <div class="tile-row" :class="{ 'tile-row--winner': winnerSide(m) === 2, 'tile-row--loser': !!winnerSide(m) && winnerSide(m) !== 2 }">
+                  <div class="team-name">{{ nameFor(m.team2_id) }}</div>
+                  <span class="pill pill-winner" v-if="winnerSide(m) === 2">WIN</span>
+                </div>
+              </template>
             </div>
           </div>
         </div>
+
+        <!-- Connectors overlay (SVG) -->
+        <svg class="connectors" :width="bracketWidth" :height="bracketHeight">
+          <template v-for="[r, arr] in grouped">
+            <template v-if="r < roundsCount">
+              <path
+                v-for="m in arr"
+                :key="m.id + '-conn'"
+                :d="(() => {
+                  const index = m.bracket_match_index ?? 0;
+                  const x1 = tileRightXFor(r) - 10;
+                  const y1 = centerYFor(r, index);
+                  const x2 = tileLeftXFor(r + 1) + 10;
+                  const y2 = centerYFor(r + 1, Math.floor(index / 2));
+                  const mx = x1 + (COL_GAP / 2);
+                  return `M ${x1} ${y1} H ${mx} V ${y2} H ${x2}`;
+                })()"
+                class="connector"
+              />
+            </template>
+          </template>
+        </svg>
       </div>
     </div>
-
-    <!-- Connectors overlay (SVG) -->
-    <svg
-      class="connectors"
-      :width="(grouped.length * COL_WIDTH) + ((grouped.length - 1) * COL_GAP)"
-      :height="(round1Count * (TILE_HEIGHT + TILE_GAP))"
-    >
-      <template v-for="[r, arr] in grouped">
-        <template v-if="r < roundsCount">
-          <line
-            v-for="m in arr"
-            :key="m.id + '-conn'"
-            :x1="centerXFor(r)"
-            :y1="centerYFor(r, m.bracket_match_index ?? 0)"
-            :x2="centerXFor(r + 1) - COL_WIDTH"
-            :y2="centerYFor(r + 1, Math.floor((m.bracket_match_index ?? 0) / 2))"
-            stroke="rgba(255,255,255,0.45)"
-            stroke-width="2"
-          />
-          <!-- small horizontal cap into next tile -->
-          <line
-            v-for="m in arr"
-            :key="m.id + '-cap'"
-            :x1="centerXFor(r + 1) - COL_WIDTH"
-            :y1="centerYFor(r + 1, Math.floor((m.bracket_match_index ?? 0) / 2))"
-            :x2="centerXFor(r + 1) - (COL_WIDTH - 12)"
-            :y2="centerYFor(r + 1, Math.floor((m.bracket_match_index ?? 0) / 2))"
-            stroke="rgba(255,255,255,0.45)"
-            stroke-width="2"
-          />
-        </template>
-      </template>
-    </svg>
   </div>
 </template>
 
 <style scoped>
+.bracket-scroll {
+  width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding-bottom: 8px;
+}
+
 .bracket-root {
+  position: relative;
+  isolation: isolate;
+}
+
+.bracket-head {
+  display: flex;
+  align-items: flex-end;
+}
+
+.bracket-stage {
   position: relative;
   display: flex;
   align-items: flex-start;
@@ -218,55 +291,123 @@ function onOpen(id: string) {
   color: rgba(255,255,255,0.8);
   font-size: 0.9rem;
   font-weight: 600;
-  padding: 6px 4px 10px 4px;
+  padding: 0 4px 10px 4px;
 }
 
 .col-body {
-  border-left: 1px solid rgba(255,255,255,0.25);
-  padding-left: 8px;
+  padding-left: 0;
 }
 
 .match-tile {
   cursor: pointer;
-  border-radius: 12px;
+  border-radius: 16px;
   background: rgba(255,255,255,0.10);
-  border: 1px solid rgba(255,255,255,0.20);
+  border: 1px solid rgba(255,255,255,0.18);
   padding: 8px 10px;
   color: white;
-  transition: background 0.15s ease-in-out;
+  transition: background 0.15s ease-in-out, border-color 0.15s ease-in-out, transform 0.15s ease-in-out;
+  backdrop-filter: blur(10px);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+  z-index: 10;
 }
 
 .match-tile:hover {
-  background: rgba(255,255,255,0.15);
+  background: rgba(255,255,255,0.14);
+  border-color: rgba(255,255,255,0.28);
+  transform: translateY(-1px);
+}
+
+.match-tile--disabled {
+  cursor: default;
+  opacity: 0.85;
+}
+
+.match-tile--disabled:hover {
+  background: rgba(255,255,255,0.10);
+  border-color: rgba(255,255,255,0.18);
+  transform: none;
+}
+
+.match-tile--done {
+  border-color: rgba(34,197,94,0.35);
+}
+
+.match-tile--live {
+  border-color: rgba(248,113,113,0.45);
 }
 
 .tile-row {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  line-height: 1.1;
+  line-height: 1.15;
+  border-radius: 12px;
+  padding: 4px 6px;
+}
+
+.tile-row--winner {
+  background: rgba(34,197,94,0.12);
+}
+
+.tile-row--winner .team-name {
+  font-weight: 800;
+}
+
+.tile-row--loser {
+  opacity: 0.70;
 }
 
 .team-name {
-  font-size: 0.9rem;
-  font-weight: 600;
+  font-size: 0.85rem;
+  font-weight: 650;
+  padding-top: 1px; /* optical centering in compact rows */
 }
 
-.bye {
-  display: inline-block;
-  padding: 2px 6px;
-  border-radius: 8px;
+.tile-subrow {
   font-size: 0.75rem;
-  font-weight: 700;
-  color: #0f172a;
-  background: #fde68a; /* amber-200 */
+  font-weight: 750;
+  letter-spacing: 0.02em;
+  text-transform: lowercase;
+  color: rgba(255,255,255,0.80);
+  padding: 3px 6px;
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 7px;
+  border-radius: 999px;
+  font-size: 0.65rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  user-select: none;
+}
+
+.pill-winner {
+  color: rgba(15,23,42,0.95);
+  background: rgba(250,204,21,0.92);
+  border: 1px solid rgba(250,204,21,0.85);
 }
 
 /* SVG overlay */
 .connectors {
   position: absolute;
   left: 0;
-  top: calc(1.5rem + 6px); /* roughly align with first column top; minor visual offset ok */
+  top: 0;
   pointer-events: none;
+  z-index: 1;
+}
+
+.connector {
+  fill: none;
+  stroke: rgba(255,255,255,0.85);
+  stroke-width: 2.0;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
 }
 </style>
