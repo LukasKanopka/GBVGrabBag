@@ -83,6 +83,20 @@ type Standing = {
 
 const standings = ref<Standing[]>([]);
 
+const advanceCount = computed<number | null>(() => {
+  const size = teams.value.length;
+  if (!Number.isFinite(size) || size <= 0) return null;
+
+  const rules = session.tournament?.advancement_rules ?? null;
+  const configured = rules?.pools?.find((p) => p.fromPoolSize === size)?.advanceCount ?? null;
+  if (configured != null && Number.isFinite(configured) && configured > 0) return configured;
+
+  // Defaults (kept consistent with bracket.ts)
+  if (size === 4) return 2;
+  if (size === 5) return 3;
+  return null;
+});
+
 async function ensureTournament() {
   if (!accessCode.value) return;
   await session.ensureAnon();
@@ -415,6 +429,10 @@ onBeforeUnmount(async () => {
         <!-- Standings -->
         <div class="mt-6">
           <h3 class="text-lg font-semibold text-white">Standings</h3>
+          <div v-if="advanceCount != null" class="mt-1 text-sm text-white/80">
+            Top <span class="font-semibold text-white">{{ advanceCount }}</span> of
+            <span class="font-semibold text-white">{{ teams.length }}</span> teams advance to bracket play.
+          </div>
           <div v-if="standings.length === 0" class="mt-2 text-sm text-white/80">No results yet.</div>
           <ul v-else class="mt-3 grid gap-3">
             <li

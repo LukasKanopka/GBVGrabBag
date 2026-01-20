@@ -44,6 +44,44 @@ type Standing = {
   poolId: UUID;
 };
 
+const BRACKET_ID_NAMESPACE_UUID = '6b1f1d86-8c38-4d3f-85fb-9f5d4f0c1a9f';
+
+function uuidToBytes(uuid: string): Uint8Array {
+  const hex = uuid.replace(/-/g, '').toLowerCase();
+  if (!/^[0-9a-f]{32}$/.test(hex)) throw new Error(`Invalid UUID: ${uuid}`);
+  const bytes = new Uint8Array(16);
+  for (let i = 0; i < 16; i++) {
+    bytes[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16);
+  }
+  return bytes;
+}
+
+function bytesToUuid(bytes: Uint8Array): string {
+  const hex = Array.from(bytes)
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('');
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
+async function uuidV5(name: string, namespaceUuid = BRACKET_ID_NAMESPACE_UUID): Promise<string> {
+  const namespaceBytes = uuidToBytes(namespaceUuid);
+  const nameBytes = new TextEncoder().encode(name);
+  const input = new Uint8Array(namespaceBytes.length + nameBytes.length);
+  input.set(namespaceBytes, 0);
+  input.set(nameBytes, namespaceBytes.length);
+
+  if (!globalThis.crypto?.subtle?.digest) {
+    if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
+    throw new Error('crypto.subtle.digest is not available to generate deterministic UUIDs');
+  }
+
+  const digest = new Uint8Array(await globalThis.crypto.subtle.digest('SHA-1', input));
+  const out = digest.slice(0, 16);
+  out[6] = (out[6] & 0x0f) | 0x50;
+  out[8] = (out[8] & 0x3f) | 0x80;
+  return bytesToUuid(out);
+}
+
 /**
  * Load tournament rules to get tiebreaker order; provide defaults if missing.
  */
@@ -335,6 +373,24 @@ export async function generateBracket(tournamentId: string): Promise<{ inserted:
     }
   }
 
+  // Reuse existing match IDs by (round,index) so we don't create duplicates when deletes are blocked by RLS.
+  const existingIdByKey = new Map<string, string>();
+  {
+    const { data: existing, error: exErr } = await supabase
+      .from('matches')
+      .select('id,bracket_round,bracket_match_index')
+      .eq('tournament_id', tournamentId)
+      .eq('match_type', 'bracket');
+    if (!exErr && Array.isArray(existing)) {
+      for (const m of existing as any[]) {
+        if (m?.id && m?.bracket_round != null && m?.bracket_match_index != null) {
+          const key = `${m.bracket_round}:${m.bracket_match_index}`;
+          if (!existingIdByKey.has(key)) existingIdByKey.set(key, m.id);
+        }
+      }
+    }
+  }
+
   // Build seeds following advancement rules
   const { seeds } = await seedAdvancers(tournamentId);
   const N = seeds.length;
@@ -366,11 +422,12 @@ export async function generateBracket(tournamentId: string): Promise<{ inserted:
   function pushRow(bracket_round: number, bracket_match_index: number, team1_id: string | null, team2_id: string | null) {
     const k = `${bracket_round}:${bracket_match_index}`;
     if (seenKeys.has(k)) {
-      // Avoid duplicate (round, index) which violates matches_bracket_round_index_uidx
+      // Avoid duplicate (round, index) rows client-side.
       return;
     }
     seenKeys.add(k);
     rows.push({
+      id: existingIdByKey.get(k) ?? null,
       tournament_id: tournamentId,
       pool_id: null,
       round_number: bracket_round,
@@ -416,37 +473,42 @@ export async function generateBracket(tournamentId: string): Promise<{ inserted:
     }
   }
 
+  for (const r of rows) {
+    if (!r.id) {
+      r.id = await uuidV5(`tournament:${tournamentId}:bracket:${r.bracket_round}:${r.bracket_match_index}`);
+    }
+  }
+
   if (rows.length > 0) {
-    // Use upsert to avoid duplicate key failures when delete is blocked by RLS (or races).
+    // Upsert by primary key so this works even if the DB is missing a unique index on bracket columns.
     const { error: upsertErr } = await supabase
       .from('matches')
-      .upsert(rows, { onConflict: 'tournament_id,bracket_round,bracket_match_index' });
+      .upsert(rows, { onConflict: 'id' });
 
     if (upsertErr) {
       errors.push(`Failed to insert bracket matches: ${upsertErr.message}`);
     } else {
       totalInserted += rows.length;
 
-      // Best-effort cleanup: delete any old bracket matches not in this generated key-set.
+      // Best-effort cleanup: delete any old bracket matches not in this generated id-set.
       // (If delete is blocked by RLS, this may silently no-op; bracket rendering will still be correct
       // as long as bracket size/rounds are stable.)
       try {
-        const allowedKeys = new Set<string>(rows.map((r) => `${r.bracket_round}:${r.bracket_match_index}`));
+        const allowedIds = new Set<string>(rows.map((r) => r.id as string));
         const { data: existing, error: exErr } = await supabase
           .from('matches')
-          .select('id, bracket_round, bracket_match_index')
+          .select('id')
           .eq('tournament_id', tournamentId)
           .eq('match_type', 'bracket');
         if (!exErr && Array.isArray(existing)) {
           const toDelete = existing
-            .filter((m: any) => m.bracket_round != null && m.bracket_match_index != null)
-            .filter((m: any) => !allowedKeys.has(`${m.bracket_round}:${m.bracket_match_index}`))
             .map((m: any) => m.id as string);
-          if (toDelete.length) {
+          const filtered = toDelete.filter((id: string) => id && !allowedIds.has(id));
+          if (filtered.length) {
             const { error: delExtraErr } = await supabase
               .from('matches')
               .delete()
-              .in('id', toDelete)
+              .in('id', filtered)
               .eq('match_type', 'bracket');
             if (delExtraErr) {
               errors.push(`Failed to remove stale bracket matches: ${delExtraErr.message}`);
