@@ -212,7 +212,7 @@ onBeforeUnmount(async () => {
 </script>
 
 <template>
-  <PublicLayout>
+  <PublicLayout :stickyHeader="false">
     <section class="p-5 sm:p-7">
         <div class="flex items-center justify-between gap-3">
           <div>

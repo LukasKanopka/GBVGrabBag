@@ -467,13 +467,6 @@ function onOpen(m: BracketMatch) {
   isolation: isolate;
 }
 
-/* On small screens, constrain height so the bracket can be panned both directions (like a map). */
-@media (max-width: 640px) {
-  .bracket-scroll {
-    max-height: calc(100dvh - 260px);
-  }
-}
-
 .bracket-head {
   display: flex;
   align-items: flex-end;

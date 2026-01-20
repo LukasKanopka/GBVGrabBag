@@ -3,6 +3,10 @@ import { useRoute, useRouter } from 'vue-router';
 import { computed } from 'vue';
 import { useSessionStore } from '../../stores/session';
 
+withDefaults(defineProps<{ stickyHeader?: boolean }>(), {
+  stickyHeader: true,
+});
+
 const router = useRouter();
 const route = useRoute();
 const session = useSessionStore();
@@ -30,10 +34,10 @@ async function changeCode() {
 </script>
 
 <template>
-  <div class="min-h-dvh w-full">
-    <!-- Sticky Public Header (green primary) -->
+  <div class="min-h-full min-h-dvh w-full">
+    <!-- Public Header (green primary) -->
     <header
-      class="sticky top-0 z-50"
+      :class="stickyHeader ? 'sticky top-0 z-50' : ''"
       aria-label="Public tournament header"
     >
       <div class="gbv-grad-green text-white shadow-md">

@@ -4,7 +4,7 @@ import Toast from 'primevue/toast';
 
 <template>
   <div
-    class="min-h-dvh flex flex-col"
+    class="min-h-full min-h-dvh flex flex-col"
     :class="[
       $route.meta.fullScreen
         ? ($route.meta.publicShell ? 'gbv-grad-green text-white' : 'gbv-grad-green')
