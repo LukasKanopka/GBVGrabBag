@@ -39,6 +39,12 @@ const toast = useToast();
 const accessCode = computed(() => (route.params.accessCode as string) ?? session.accessCode ?? '');
 const loading = ref(false);
 
+const bracketChromeHidden = ref(false);
+const mobileBracketOffsetPx = computed(() => (bracketChromeHidden.value ? 140 : 260));
+function onBracketViewportScroll(pos: { left: number; top: number }) {
+  bracketChromeHidden.value = pos.left > 0 || pos.top > 0;
+}
+
 const matches = ref<Match[]>([]);
 const teamNameById = ref<Record<string, string>>({});
 const courts = ref<string[]>([]);
@@ -214,52 +220,59 @@ onBeforeUnmount(async () => {
 <template>
   <PublicLayout :stickyHeader="false">
     <section class="p-5 sm:p-7">
-        <div class="flex items-center justify-between gap-3">
-          <div>
-            <h2 class="text-2xl font-semibold text-white">Bracket</h2>
-            <p class="mt-1 text-white/80">
-              Playoff bracket. Tap a match to view actions.
-            </p>
-          </div>
-          <div class="flex items-center gap-2">
-            <router-link
-              :to="{ name: 'public-leaderboard', params: { accessCode } }"
-              class="inline-flex items-center rounded-full bg-white/10 px-3 py-1 text-xs font-semibold text-white ring-1 ring-white/20 hover:bg-white/15 transition-colors whitespace-nowrap"
-            >
-              Leaderboard
-            </router-link>
-            <div v-if="loading" class="text-sm text-white/80">Loading…</div>
-          </div>
+      <div v-show="!bracketChromeHidden" class="flex items-center justify-between gap-3">
+        <div>
+          <h2 class="text-2xl font-semibold text-white">Bracket</h2>
+          <p class="mt-1 text-white/80">
+            Playoff bracket. Tap a match to view actions.
+          </p>
         </div>
-
-        <div
-          v-if="championName"
-          class="mt-6 rounded-2xl bg-white/10 ring-2 ring-amber-300/60 p-5 text-center text-white"
-        >
-          <div class="text-2xl sm:text-3xl font-extrabold leading-tight">
-            {{ championName }} WON!! 🎉🎉
-          </div>
-          <div class="mt-1 text-white/80 font-medium">
-            Thank you for playing!
-          </div>
-        </div>
-
-        <div v-if="matches.length === 0" class="mt-6 rounded-xl border border-dashed border-white/30 p-6 text-center text-white/80">
-          No bracket matches yet.
-        </div>
-
-        <div v-else class="mt-6">
-          <div class="-mx-5 sm:-mx-7">
-            <BracketView :matches="matches" :teamNameById="teamNameById" :courts="courts" :scroll="false" @open="openMatchById" />
-          </div>
-        </div>
-
-        <div class="mt-8 text-sm text-white/80 text-center">
-          Back to
-          <router-link class="underline" :to="{ name: 'tournament-public', params: { accessCode } }">
-            Tournament
+        <div class="flex items-center gap-2">
+          <router-link
+            :to="{ name: 'public-leaderboard', params: { accessCode } }"
+            class="inline-flex items-center rounded-full bg-white/10 px-3 py-1 text-xs font-semibold text-white ring-1 ring-white/20 hover:bg-white/15 transition-colors whitespace-nowrap"
+          >
+            Leaderboard
           </router-link>
+          <div v-if="loading" class="text-sm text-white/80">Loading…</div>
         </div>
+      </div>
+
+      <div
+        v-if="championName && !bracketChromeHidden"
+        class="mt-6 rounded-2xl bg-white/10 ring-2 ring-amber-300/60 p-5 text-center text-white"
+      >
+        <div class="text-2xl sm:text-3xl font-extrabold leading-tight">
+          {{ championName }} WON!! 🎉🎉
+        </div>
+        <div class="mt-1 text-white/80 font-medium">
+          Thank you for playing!
+        </div>
+      </div>
+
+      <div v-if="matches.length === 0" class="mt-6 rounded-xl border border-dashed border-white/30 p-6 text-center text-white/80">
+        No bracket matches yet.
+      </div>
+
+      <div v-else :class="bracketChromeHidden ? '' : 'mt-6'">
+        <div class="-mx-5 sm:-mx-7">
+          <BracketView
+            :matches="matches"
+            :teamNameById="teamNameById"
+            :courts="courts"
+            :mobile-max-height-offset-px="mobileBracketOffsetPx"
+            @viewport-scroll="onBracketViewportScroll"
+            @open="openMatchById"
+          />
+        </div>
+      </div>
+
+      <div v-show="!bracketChromeHidden" class="mt-8 text-sm text-white/80 text-center">
+        Back to
+        <router-link class="underline" :to="{ name: 'tournament-public', params: { accessCode } }">
+          Tournament
+        </router-link>
+      </div>
     </section>
   </PublicLayout>
 </template>

@@ -35,7 +35,26 @@ const props = withDefaults(
 
 const emit = defineEmits<{
   (e: 'open', matchId: string): void;
+  (e: 'viewport-scroll', payload: { left: number; top: number }): void;
 }>();
+
+const scrollEl = ref<HTMLDivElement | null>(null);
+let scrollRafPending = false;
+function onViewportScroll() {
+  if (scrollRafPending) return;
+  scrollRafPending = true;
+  requestAnimationFrame(() => {
+    scrollRafPending = false;
+    const el = scrollEl.value;
+    if (!el) return;
+    emit('viewport-scroll', { left: el.scrollLeft, top: el.scrollTop });
+  });
+}
+
+const scrollStyle = computed(() => {
+  const offsetPx = props.mobileMaxHeightOffsetPx ?? 260;
+  return { '--bracket-scroll-offset': `${offsetPx}px` } as any;
+});
 
 function nameFor(id: string | null): string {
   if (!id) return 'TBD';
@@ -352,7 +371,16 @@ function onOpen(m: BracketMatch) {
 </script>
 
 <template>
-  <div :class="props.scroll ? 'bracket-scroll' : ''" v-if="grouped.length">
+  <div
+    class="bracket-scroll"
+    v-if="grouped.length"
+    :style="scrollStyle"
+    ref="scrollEl"
+    @scroll.passive="onViewportScroll"
+  >
+    <div v-if="$slots.header" class="bracket-chrome">
+      <slot name="header" />
+    </div>
     <div class="bracket-root" :style="{ minWidth: bracketWidth + 'px' }">
       <!-- Titles row (separate from connector coordinate space) -->
       <div v-if="showTitles !== false" class="bracket-head" :style="{ height: TITLE_HEIGHT + 'px' }">
@@ -455,11 +483,16 @@ function onOpen(m: BracketMatch) {
         </svg>
       </div>
     </div>
+
+    <div v-if="$slots.footer" class="bracket-chrome">
+      <slot name="footer" />
+    </div>
   </div>
 </template>
 
 <style scoped>
 .bracket-scroll {
+  --bracket-scroll-offset: 260px;
   width: 100%;
   overflow: auto;
   padding-bottom: 8px;
@@ -468,9 +501,20 @@ function onOpen(m: BracketMatch) {
   touch-action: pan-x pan-y;
 }
 
+.bracket-chrome {
+  width: 100%;
+}
+
 .bracket-root {
   position: relative;
   isolation: isolate;
+}
+
+/* On small screens, constrain height so the bracket can be panned both directions (like a map). */
+@media (max-width: 640px) {
+  .bracket-scroll {
+    max-height: calc(100dvh - var(--bracket-scroll-offset, 260px));
+  }
 }
 
 .bracket-head {
