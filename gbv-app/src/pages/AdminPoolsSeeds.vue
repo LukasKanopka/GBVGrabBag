@@ -105,6 +105,16 @@ const invalidPools = computed(() => {
     .filter((x) => x.size !== 0 && x.size !== 4 && x.size !== 5);
 });
 
+const poolsMissingSeeds = computed(() => {
+  return pools.value
+    .map((p) => {
+      const poolTeams = teams.value.filter((t) => t.pool_id === p.id);
+      const missing = poolTeams.filter((t) => t.seed_in_pool == null).length;
+      return { pool: p, size: poolTeams.length, missing };
+    })
+    .filter((x) => x.size > 0 && x.missing > 0);
+});
+
 // Loaders
 async function loadTournamentByAccessCode() {
   if (!accessCode.value?.trim()) {
@@ -601,6 +611,19 @@ async function hasExistingPoolMatches(tournamentId: string): Promise<boolean> {
           {{ ip.pool.name }} has {{ ip.size }} team(s). Adjust to 4 or 5 before generating the schedule.
         </li>
       </ul>
+    </div>
+
+    <div
+      v-if="poolsMissingSeeds.length > 0"
+      class="mt-4 rounded-lg border border-amber-300 bg-amber-400/10 p-4 text-amber-100 text-sm"
+    >
+      <div class="font-semibold mb-1">Missing pool seeds detected</div>
+      <ul class="list-disc list-inside">
+        <li v-for="ms in poolsMissingSeeds" :key="ms.pool.id">
+          {{ ms.pool.name }} has {{ ms.missing }} team(s) without a seed.
+        </li>
+      </ul>
+      <div class="mt-2 text-xs text-white/80">Schedule generation will be blocked until every team in a pool has a seed.</div>
     </div>
 
     <div v-if="session.tournament" class="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-3">

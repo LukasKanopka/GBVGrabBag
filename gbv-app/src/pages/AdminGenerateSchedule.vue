@@ -26,6 +26,13 @@ const lastResult = ref<GenerateResult | null>(null);
 
 const canGenerate = computed(() => prereqErrors.value.length === 0);
 
+async function refreshPrereqs(): Promise<boolean> {
+  if (!session.tournament) return false;
+  const res = await checkPrerequisites(session.tournament.id);
+  prereqErrors.value = res.errors ?? [];
+  return res.ok;
+}
+
 async function loadTournamentByAccessCode() {
   if (!accessCode.value?.trim()) {
     toast.add({ severity: 'warn', summary: 'Access code required', life: 2000 });
@@ -44,6 +51,7 @@ async function loadTournamentByAccessCode() {
     }
     toast.add({ severity: 'success', summary: 'Tournament loaded', detail: t.name, life: 1500 });
     await checkExistingMatches();
+    await refreshPrereqs();
   } finally {
     loading.value = false;
   }
@@ -72,9 +80,8 @@ async function runPrereqCheck() {
   }
   checking.value = true;
   try {
-    const res = await checkPrerequisites(session.tournament.id);
-    prereqErrors.value = res.errors ?? [];
-    if (res.ok) {
+    const ok = await refreshPrereqs();
+    if (ok) {
       toast.add({ severity: 'success', summary: 'All prerequisites satisfied', life: 1500 });
     } else {
       toast.add({ severity: 'warn', summary: 'Prerequisites not met', detail: `${prereqErrors.value.length} issue(s)`, life: 3000 });
@@ -110,9 +117,15 @@ async function runGenerate() {
     toast.add({ severity: 'warn', summary: 'Load a tournament first', life: 1500 });
     return;
   }
-  if (prereqErrors.value.length > 0) {
-    toast.add({ severity: 'warn', summary: 'Fix prerequisites first', detail: `${prereqErrors.value.length} issue(s)`, life: 2500 });
-    return;
+  checking.value = true;
+  try {
+    const ok = await refreshPrereqs();
+    if (!ok) {
+      toast.add({ severity: 'warn', summary: 'Fix prerequisites first', detail: `${prereqErrors.value.length} issue(s)`, life: 2500 });
+      return;
+    }
+  } finally {
+    checking.value = false;
   }
   // Guard against duplicates
   if (hasMatches.value) {

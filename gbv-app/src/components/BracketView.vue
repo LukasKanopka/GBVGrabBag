@@ -455,14 +455,23 @@ function onOpen(m: BracketMatch) {
 <style scoped>
 .bracket-scroll {
   width: 100%;
-  overflow-x: auto;
-  overflow-y: hidden;
+  overflow: auto;
   padding-bottom: 8px;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  touch-action: pan-x pan-y;
 }
 
 .bracket-root {
   position: relative;
   isolation: isolate;
+}
+
+/* On small screens, constrain height so the bracket can be panned both directions (like a map). */
+@media (max-width: 640px) {
+  .bracket-scroll {
+    max-height: calc(100dvh - 260px);
+  }
 }
 
 .bracket-head {
