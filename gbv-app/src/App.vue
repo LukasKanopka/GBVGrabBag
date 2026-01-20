@@ -7,18 +7,30 @@ const route = useRoute();
 
 watchEffect(() => {
   if (typeof document === 'undefined') return;
-  const el = document.body;
+  const body = document.body;
+  const html = document.documentElement;
 
   const managed = ['bg-gbv-bg', 'bg-white', 'bg-gbv-blue', 'gbv-grad-green', 'text-white', 'text-slate-800'];
-  for (const c of managed) el.classList.remove(c);
-
-  if (route.meta.blueLayout) {
-    el.classList.add('bg-gbv-blue', 'text-white');
-  } else if (route.meta.fullScreen) {
-    el.classList.add('gbv-grad-green', 'text-white');
-  } else {
-    el.classList.add('gbv-grad-green', 'text-white');
+  for (const c of managed) {
+    body.classList.remove(c);
+    html.classList.remove(c);
   }
+
+  const isAdmin = !!route.meta.blueLayout;
+  const pageClasses = isAdmin ? ['bg-gbv-blue', 'text-white'] : ['gbv-grad-green', 'text-white'];
+  for (const c of pageClasses) {
+    body.classList.add(c);
+    html.classList.add(c);
+  }
+
+  const themeColor = isAdmin ? '#2d51a6' : '#1b6a08';
+  let meta = document.querySelector('meta[name="theme-color"]') as HTMLMetaElement | null;
+  if (!meta) {
+    meta = document.createElement('meta');
+    meta.name = 'theme-color';
+    document.head.appendChild(meta);
+  }
+  meta.content = themeColor;
 });
 </script>
 

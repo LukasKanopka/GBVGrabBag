@@ -33,10 +33,12 @@ body {
 
 /* Mild same-color gradients */
 .gbv-grad-green {
+  background-color: #499237;
   background-image: linear-gradient(135deg, #499237 0%, #539a3e 100%);
 }
 
 .gbv-grad-dark-green {
+  background-color: #1b6a08;
   background-image: linear-gradient(135deg, #1b6a08 0%, #29820c 100%);
 }
 
@@ -70,6 +72,7 @@ body {
 /* Icons and close button use default colors */
 
 .gbv-grad-blue {
+  background-color: #2d51a6;
   background-image: linear-gradient(135deg, #244695 0%, #2d51a6 100%);
 }
 
