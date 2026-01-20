@@ -6,6 +6,7 @@ import { useToast } from 'primevue/usetoast';
 import supabase from '../lib/supabase';
 import { useSessionStore } from '../stores/session';
 import PublicLayout from '../components/layout/PublicLayout.vue';
+import { advanceWinnerToNextById } from '../lib/bracket';
 
 type UUID = string;
 
@@ -404,6 +405,12 @@ async function submitFinal() {
       .update({ bracket_started: true })
       .eq('id', session.tournament.id)
       .eq('bracket_started', false);
+
+    // Auto-advance winner into next round slot (do not overwrite manual changes)
+    const adv = await advanceWinnerToNextById(session.tournament.id, liveMatchId.value);
+    if (adv.error) {
+      toast.add({ severity: 'warn', summary: 'Bracket advance skipped', detail: adv.error, life: 3000 });
+    }
   }
 
   toast.add({ severity: 'success', summary: 'Final submitted', life: 1600 });
