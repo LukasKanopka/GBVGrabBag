@@ -19,6 +19,7 @@ type Match = {
   ref_team_id: UUID | null;
   team1_score: number | null;
   team2_score: number | null;
+  winner_id: UUID | null;
   is_live: boolean;
   live_score_team1: number | null;
   live_score_team2: number | null;
@@ -96,7 +97,7 @@ async function loadMatch() {
   }
   const { data, error } = await supabase
     .from('matches')
-    .select('id,tournament_id,pool_id,round_number,team1_id,team2_id,ref_team_id,team1_score,team2_score,is_live,live_score_team1,live_score_team2,live_owner_id,live_last_active_at,match_type')
+    .select('id,tournament_id,pool_id,round_number,team1_id,team2_id,ref_team_id,team1_score,team2_score,winner_id,is_live,live_score_team1,live_score_team2,live_owner_id,live_last_active_at,match_type')
     .eq('id', matchId.value)
     .eq('tournament_id', session.tournament.id)
     .single();
@@ -126,6 +127,33 @@ async function loadTeams() {
 
 function nameFor(id: string | null) {
   return (id && teamNameById.value[id]) || 'TBD';
+}
+
+function isCompleted(m: Match): boolean {
+  return m.team1_score != null && m.team2_score != null;
+}
+
+function winnerSide(m: Match): 1 | 2 | null {
+  if (!m.team1_id || !m.team2_id) return null;
+  if (m.winner_id) {
+    if (m.winner_id === m.team1_id) return 1;
+    if (m.winner_id === m.team2_id) return 2;
+  }
+  if (!isCompleted(m)) return null;
+  if (m.team1_score === m.team2_score) return null;
+  return (m.team1_score ?? 0) > (m.team2_score ?? 0) ? 1 : 2;
+}
+
+function winnerName(m: Match): string | null {
+  const side = winnerSide(m);
+  if (side === 1) return nameFor(m.team1_id);
+  if (side === 2) return nameFor(m.team2_id);
+  return null;
+}
+
+function finalScoreText(m: Match): string | null {
+  if (!isCompleted(m)) return null;
+  return `${m.team1_score ?? 0}\u2013${m.team2_score ?? 0}`;
 }
 
 
@@ -223,9 +251,74 @@ onBeforeUnmount(() => {
           </div>
         </div>
 
+        <div
+          v-if="isLiveActive(match)"
+          class="mt-5 rounded-2xl bg-white/10 p-4 text-white ring-2 ring-red-500/60"
+        >
+          <div class="flex items-center justify-between gap-3">
+            <div class="text-sm font-semibold uppercase tracking-wide text-white/80">Live Score</div>
+            <div class="inline-flex items-center gap-2 rounded-full bg-red-600 px-2.5 py-0.5 text-xs font-semibold uppercase tracking-wide text-white whitespace-nowrap">
+              <span class="size-2 rounded-full bg-white/90"></span>
+              LIVE <span class="tabular-nums">{{ match.live_score_team1 ?? 0 }}-{{ match.live_score_team2 ?? 0 }}</span>
+            </div>
+          </div>
+          <div class="mt-3 grid grid-cols-2 gap-3">
+            <div class="rounded-xl bg-white/5 ring-1 ring-white/15 p-3">
+              <div class="text-xs font-medium text-white/70 truncate">{{ nameFor(match.team1_id) }}</div>
+              <div class="mt-1 text-4xl font-black tabular-nums text-white">{{ match.live_score_team1 ?? 0 }}</div>
+            </div>
+            <div class="rounded-xl bg-white/5 ring-1 ring-white/15 p-3">
+              <div class="text-xs font-medium text-white/70 truncate">{{ nameFor(match.team2_id) }}</div>
+              <div class="mt-1 text-4xl font-black tabular-nums text-white">{{ match.live_score_team2 ?? 0 }}</div>
+            </div>
+          </div>
+        </div>
+
+        <div
+          v-else-if="isCompleted(match)"
+          class="mt-5 rounded-2xl bg-white/10 p-4 text-white ring-1 ring-white/20"
+        >
+          <div class="flex items-center justify-between gap-3">
+            <div class="text-sm font-semibold uppercase tracking-wide text-white/80">Final</div>
+            <div class="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold uppercase tracking-wide bg-white/10 ring-1 ring-white/20 text-white whitespace-nowrap">
+              <span class="tabular-nums">{{ finalScoreText(match) }}</span>
+            </div>
+          </div>
+          <div class="mt-3 grid grid-cols-2 gap-3">
+            <div class="rounded-xl bg-white/5 ring-1 ring-white/15 p-3">
+              <div
+                class="text-xs font-medium text-white/70 truncate"
+                :class="winnerSide(match) === 2 ? 'opacity-70 line-through decoration-2 decoration-white/70' : ''"
+              >
+                {{ nameFor(match.team1_id) }}
+              </div>
+              <div class="mt-1 text-4xl font-black tabular-nums text-white">{{ match.team1_score ?? 0 }}</div>
+            </div>
+            <div class="rounded-xl bg-white/5 ring-1 ring-white/15 p-3">
+              <div
+                class="text-xs font-medium text-white/70 truncate"
+                :class="winnerSide(match) === 1 ? 'opacity-70 line-through decoration-2 decoration-white/70' : ''"
+              >
+                {{ nameFor(match.team2_id) }}
+              </div>
+              <div class="mt-1 text-4xl font-black tabular-nums text-white">{{ match.team2_score ?? 0 }}</div>
+            </div>
+          </div>
+          <div class="mt-3 flex items-center justify-between gap-3">
+            <div class="text-sm text-white/80">Winner</div>
+            <div
+              v-if="winnerName(match)"
+              class="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-extrabold tracking-wide uppercase bg-amber-300/90 text-slate-900 ring-1 ring-amber-200/70 max-w-[70%] truncate"
+            >
+              {{ winnerName(match) }}
+            </div>
+            <div v-else class="text-sm text-white/70">—</div>
+          </div>
+        </div>
+
         <div class="mt-6 grid grid-cols-1 sm:grid-cols-2 gap-4">
           <Button
-            label="Enter Score Manually"
+            label="Enter Final Score"
             icon="pi pi-pencil"
             severity="secondary"
             size="large"
@@ -233,7 +326,7 @@ onBeforeUnmount(() => {
             @click="goManual"
           />
           <Button
-            :label="isLiveActive(match) ? 'View Live Score' : 'Enter Live Score'"
+            :label="isLiveActive(match) ? 'View Live Score' : 'Use Live Scoreboard'"
             icon="pi pi-bolt"
             severity="secondary"
             size="large"

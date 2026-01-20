@@ -9,6 +9,8 @@ export interface BracketMatch {
   bracket_match_index: number | null;
   team1_id: UUID | null;
   team2_id: UUID | null;
+  team1_score?: number | null;
+  team2_score?: number | null;
   winner_id?: UUID | null;
   is_live?: boolean | null;
   live_score_team1?: number | null;
@@ -68,7 +70,8 @@ const round1Count = computed(() => {
 
 // Layout constants
 const TITLE_HEIGHT = 32; // px fixed header height per column
-const COL_WIDTH = 230; // px for each round column
+const COL_WIDTH = 270
+; // px for each round column
 const COL_GAP = 28; // px gap between columns
 const TILE_HEIGHT = 68; // px tile height
 const TILE_GAP = 20; // base vertical gap between r1 tiles
@@ -164,8 +167,22 @@ function byeAdvancesText(m: BracketMatch): string | null {
   return 'bye-advances';
 }
 
-function winnerSide(m: BracketMatch): 1 | 2 | null {
+function winnerIdFor(m: BracketMatch): string | null {
   const winId = m.winner_id ?? null;
+  const t1 = m.team1_id ?? null;
+  const t2 = m.team2_id ?? null;
+  if (winId && (winId === t1 || winId === t2)) return winId;
+  if (t1 && t2 && isCompleted(m)) {
+    const s1 = m.team1_score ?? 0;
+    const s2 = m.team2_score ?? 0;
+    if (s1 === s2) return null;
+    return s1 > s2 ? t1 : t2;
+  }
+  return null;
+}
+
+function winnerSide(m: BracketMatch): 1 | 2 | null {
+  const winId = winnerIdFor(m);
   if (!winId) return null;
   if (m.team1_id && winId === m.team1_id) return 1;
   if (m.team2_id && winId === m.team2_id) return 2;
@@ -173,7 +190,7 @@ function winnerSide(m: BracketMatch): 1 | 2 | null {
 }
 
 function loserTeamId(m: BracketMatch): string | null {
-  const winId = m.winner_id ?? null;
+  const winId = winnerIdFor(m);
   if (!winId) return null;
   const t1 = m.team1_id ?? null;
   const t2 = m.team2_id ?? null;
@@ -181,6 +198,19 @@ function loserTeamId(m: BracketMatch): string | null {
   if (winId === t1) return t2;
   if (winId === t2) return t1;
   return null;
+}
+
+function isCompleted(m: BracketMatch): boolean {
+  return m.team1_score != null && m.team2_score != null;
+}
+
+function winnerPillText(m: BracketMatch, side: 1 | 2): string {
+  if (!isCompleted(m)) return 'WIN';
+  const s1 = m.team1_score ?? 0;
+  const s2 = m.team2_score ?? 0;
+  const a = side === 1 ? s1 : s2;
+  const b = side === 1 ? s2 : s1;
+  return `WIN ${a}-${b}`;
 }
 
 function roundTitle(round: number): string {
@@ -374,12 +404,12 @@ function onOpen(m: BracketMatch) {
               <template v-else>
                 <div class="tile-row" :class="{ 'tile-row--winner': winnerSide(m) === 1, 'tile-row--loser': !!winnerSide(m) && winnerSide(m) !== 1 }">
                   <div class="team-name" :class="{ 'team-name--loser': !!winnerSide(m) && winnerSide(m) !== 1 }">{{ nameFor(m.team1_id) }}</div>
-                  <span class="pill pill-winner" v-if="winnerSide(m) === 1">WIN</span>
+                  <span class="pill pill-winner" v-if="winnerSide(m) === 1">{{ winnerPillText(m, 1) }}</span>
                 </div>
 
                 <div class="tile-row" :class="{ 'tile-row--winner': winnerSide(m) === 2, 'tile-row--loser': !!winnerSide(m) && winnerSide(m) !== 2 }">
                   <div class="team-name" :class="{ 'team-name--loser': !!winnerSide(m) && winnerSide(m) !== 2 }">{{ nameFor(m.team2_id) }}</div>
-                  <span class="pill pill-winner" v-if="winnerSide(m) === 2">WIN</span>
+                  <span class="pill pill-winner" v-if="winnerSide(m) === 2">{{ winnerPillText(m, 2) }}</span>
                 </div>
 
                 <div class="tile-meta">

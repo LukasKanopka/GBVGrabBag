@@ -18,6 +18,8 @@ type Match = {
   round_number: number | null;
   team1_id: UUID | null;
   team2_id: UUID | null;
+  team1_score: number | null;
+  team2_score: number | null;
   is_live: boolean;
   live_score_team1: number | null;
   live_score_team2: number | null;
@@ -40,6 +42,8 @@ const loading = ref(false);
 const matches = ref<Match[]>([]);
 const teamNameById = ref<Record<string, string>>({});
 const courts = ref<string[]>([]);
+
+let refreshTimer: ReturnType<typeof setInterval> | null = null;
 
 async function ensureTournament() {
   if (!accessCode.value) return;
@@ -74,7 +78,7 @@ async function loadMatches() {
   }
   const { data, error } = await supabase
     .from('matches')
-    .select('id,tournament_id,pool_id,round_number,team1_id,team2_id,is_live,live_score_team1,live_score_team2,live_owner_id,live_last_active_at,winner_id,match_type,bracket_round,bracket_match_index')
+    .select('id,tournament_id,pool_id,round_number,team1_id,team2_id,team1_score,team2_score,is_live,live_score_team1,live_score_team2,live_owner_id,live_last_active_at,winner_id,match_type,bracket_round,bracket_match_index')
     .eq('tournament_id', session.tournament.id)
     .eq('match_type', 'bracket')
     .order('bracket_round', { ascending: true })
@@ -161,12 +165,17 @@ onMounted(async () => {
     await loadMatches();
     await loadCourts();
     await subscribeRealtime();
+    refreshTimer = setInterval(() => void loadMatches(), 15_000);
   } finally {
     loading.value = false;
   }
 });
 
 onBeforeUnmount(async () => {
+  if (refreshTimer) {
+    clearInterval(refreshTimer);
+    refreshTimer = null;
+  }
   if (channel) {
     await channel.unsubscribe();
     channel = null;
@@ -185,11 +194,6 @@ onBeforeUnmount(async () => {
             </p>
           </div>
           <div v-if="loading" class="text-sm text-white/80">Loading…</div>
-        </div>
-
-        <div class="mt-6 rounded-xl bg-white/10 ring-1 ring-white/20 p-4 text-white">
-          <p class="text-sm text-white/80">Access Code</p>
-          <p class="font-semibold tracking-wide">{{ accessCode || '—' }}</p>
         </div>
 
         <div v-if="matches.length === 0" class="mt-6 rounded-xl border border-dashed border-white/30 p-6 text-center text-white/80">

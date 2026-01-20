@@ -81,11 +81,6 @@ onMounted(async () => {
           <div v-if="loading" class="text-sm text-white/80">Loading…</div>
         </div>
 
-        <div class="mt-6 rounded-xl bg-white/10 ring-1 ring-white/20 p-4 text-white">
-          <p class="text-sm text-white/80">Access Code</p>
-          <p class="font-semibold tracking-wide">{{ accessCode || '—' }}</p>
-        </div>
-
         <div class="mt-6">
           <div v-if="pools.length === 0" class="text-sm text-white/80">
             No pools yet.

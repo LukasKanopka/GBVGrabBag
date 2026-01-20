@@ -181,13 +181,6 @@ onMounted(async () => {
         Submit final scores for completed matches. Validation and tiebreakers apply on the server.
       </p>
 
-      <div class="mt-4 rounded-xl bg-white/10 ring-1 ring-white/20 p-4 text-white">
-        <p class="text-sm text-white/80">
-          Access Code:
-          <span class="font-semibold text-white">{{ accessCode || '—' }}</span>
-        </p>
-      </div>
-
       <div class="mt-6 grid gap-5">
         <div>
           <label class="block text-sm font-medium text-white/80 mb-2">Select Match</label>

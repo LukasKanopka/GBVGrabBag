@@ -44,6 +44,7 @@ const isLive = ref<boolean>(false);
 const matchLabel = ref<string>('No match loaded');
 const canControl = ref<boolean>(false); // false when another user has live or claim failed
 const matchType = ref<'pool' | 'bracket' | null>(null);
+const roundNumber = ref<number | null>(null);
 const liveOwnerId = ref<string | null>(null);
 const liveLastActiveAt = ref<string | null>(null);
 const myUserId = ref<string | null>(null);
@@ -88,6 +89,7 @@ function setFromMatch(m: Match | null) {
     poolId.value = null;
     team1Id.value = null;
     team2Id.value = null;
+    roundNumber.value = null;
     score1.value = 0;
     score2.value = 0;
     isLive.value = false;
@@ -101,6 +103,7 @@ function setFromMatch(m: Match | null) {
   poolId.value = m.pool_id;
   team1Id.value = m.team1_id;
   team2Id.value = m.team2_id;
+  roundNumber.value = m.round_number ?? null;
   score1.value = Math.max(0, m.live_score_team1 ?? 0);
   score2.value = Math.max(0, m.live_score_team2 ?? 0);
   isLive.value = !!m.is_live;
@@ -519,9 +522,16 @@ onBeforeUnmount(async () => {
           </div>
         </div>
 
-        <p class="mt-1 text-white/80">
-          {{ matchLabel }}
-        </p>
+        <div class="mt-1">
+          <div class="text-sm text-white/80">
+            {{ matchType === 'bracket' ? 'Bracket' : matchType === 'pool' ? 'Pool' : 'Match' }} • Round {{ roundNumber ?? '—' }}
+          </div>
+          <div class="mt-2">
+            <div class="text-xl font-semibold text-white leading-tight">{{ nameFor(team1Id) }}</div>
+            <div class="text-sm font-medium text-white/70 leading-tight">vs</div>
+            <div class="text-xl font-semibold text-white leading-tight">{{ nameFor(team2Id) }}</div>
+          </div>
+        </div>
         <p v-if="pausedForInactivity" class="mt-1 text-sm text-white/80">
           Live scoring paused due to inactivity.
         </p>
@@ -530,7 +540,7 @@ onBeforeUnmount(async () => {
         </p>
         <div v-if="!canControl" class="mt-3">
           <Button
-            label="Enter Live Score"
+            label="Use Live Scoreboard"
             icon="pi pi-bolt"
             class="!rounded-2xl border-none text-white gbv-grad-blue"
             @click="claimLiveIfPossible"

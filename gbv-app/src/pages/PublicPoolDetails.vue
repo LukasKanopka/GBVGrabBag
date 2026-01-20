@@ -54,6 +54,7 @@ const teamById = ref<Record<string, Team>>({});
 const matches = ref<Match[]>([]);
 const now = ref<number>(Date.now());
 let nowTimer: ReturnType<typeof setInterval> | null = null;
+let refreshTimer: ReturnType<typeof setInterval> | null = null;
 
 const LIVE_STALE_MS = 4 * 60 * 1000;
 function isLiveActive(m: Match): boolean {
@@ -298,10 +299,28 @@ function nameFor(id: string | null) {
 
 
 function completedLabel(m: Match): string {
-  const s1 = m.team1_score;
-  const s2 = m.team2_score;
-  if (s1 == null || s2 == null) return '';
-  return `Completed: ${s1}\u2013${s2}`;
+  if (m.team1_score == null || m.team2_score == null) return '';
+  return 'FINAL';
+}
+
+function winnerSide(m: Match): 1 | 2 | null {
+  if (!m.team1_id || !m.team2_id) return null;
+  if (m.winner_id) {
+    if (m.winner_id === m.team1_id) return 1;
+    if (m.winner_id === m.team2_id) return 2;
+  }
+  if (m.team1_score == null || m.team2_score == null) return null;
+  if (m.team1_score === m.team2_score) return null;
+  return m.team1_score > m.team2_score ? 1 : 2;
+}
+
+function winnerPillText(m: Match, side: 1 | 2): string {
+  if (m.team1_score == null || m.team2_score == null) return 'WIN';
+  const s1 = m.team1_score ?? 0;
+  const s2 = m.team2_score ?? 0;
+  const a = side === 1 ? s1 : s2;
+  const b = side === 1 ? s2 : s1;
+  return `WIN ${a}\u2013${b}`;
 }
 
 function openMatch(matchId: string) {
@@ -350,6 +369,9 @@ onMounted(async () => {
     await loadMatches();
     computeStandings();
     await subscribeRealtime();
+    refreshTimer = setInterval(() => {
+      void loadMatches().then(() => computeStandings());
+    }, 15_000);
   } finally {
     loading.value = false;
   }
@@ -359,6 +381,10 @@ onBeforeUnmount(async () => {
   if (channel) {
     await channel.unsubscribe();
     channel = null;
+  }
+  if (refreshTimer) {
+    clearInterval(refreshTimer);
+    refreshTimer = null;
   }
   if (nowTimer) {
     clearInterval(nowTimer);
@@ -457,14 +483,33 @@ onBeforeUnmount(async () => {
                 </div>
               </div>
               <div class="mt-1">
-                <div class="font-semibold text-white leading-tight">
-                  {{ nameFor(m.team1_id) }}
+                <div class="flex items-center justify-between gap-2">
+                  <div
+                    class="font-semibold text-white leading-tight min-w-0 truncate"
+                    :class="winnerSide(m) === 2 ? 'opacity-70 line-through decoration-2 decoration-white/70' : ''"
+                  >
+                    {{ nameFor(m.team1_id) }}
+                  </div>
+                  <span
+                    v-if="winnerSide(m) === 1"
+                    class="shrink-0 inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-extrabold tracking-wide uppercase bg-amber-300/90 text-slate-900 ring-1 ring-amber-200/70"
+                  >
+                    {{ winnerPillText(m, 1) }}
+                  </span>
                 </div>
-                <div class="text-xs font-medium text-white/70 leading-tight">
-                  vs
-                </div>
-                <div class="font-semibold text-white leading-tight">
-                  {{ nameFor(m.team2_id) }}
+                <div class="mt-1 flex items-center justify-between gap-2">
+                  <div
+                    class="font-semibold text-white leading-tight min-w-0 truncate"
+                    :class="winnerSide(m) === 1 ? 'opacity-70 line-through decoration-2 decoration-white/70' : ''"
+                  >
+                    {{ nameFor(m.team2_id) }}
+                  </div>
+                  <span
+                    v-if="winnerSide(m) === 2"
+                    class="shrink-0 inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-extrabold tracking-wide uppercase bg-amber-300/90 text-slate-900 ring-1 ring-amber-200/70"
+                  >
+                    {{ winnerPillText(m, 2) }}
+                  </span>
                 </div>
               </div>
               <div class="mt-1 text-xs text-white/70">

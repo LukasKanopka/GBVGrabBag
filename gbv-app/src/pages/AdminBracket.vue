@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
 import { useRouter } from 'vue-router';
 import { useToast } from 'primevue/usetoast';
 import InputText from 'primevue/inputtext';
@@ -25,6 +25,8 @@ type Match = {
   round_number: number | null;
   team1_id: UUID | null;
   team2_id: UUID | null;
+  team1_score: number | null;
+  team2_score: number | null;
   is_live: boolean;
   live_score_team1: number | null;
   live_score_team2: number | null;
@@ -169,7 +171,7 @@ async function loadMatches() {
   }
   const { data, error } = await supabase
     .from('matches')
-    .select('id,tournament_id,pool_id,round_number,team1_id,team2_id,is_live,live_score_team1,live_score_team2,live_owner_id,live_last_active_at,winner_id,match_type,bracket_round,bracket_match_index')
+    .select('id,tournament_id,pool_id,round_number,team1_id,team2_id,team1_score,team2_score,is_live,live_score_team1,live_score_team2,live_owner_id,live_last_active_at,winner_id,match_type,bracket_round,bracket_match_index')
     .eq('tournament_id', session.tournament.id)
     .eq('match_type', 'bracket')
     .order('bracket_round', { ascending: true })
@@ -318,6 +320,8 @@ function openMatchById(id: string) {
   router.push({ name: 'match-actions', params: { accessCode: session.accessCode, matchId: id }, query: { from: 'admin-bracket' } });
 }
 
+let refreshTimer: ReturnType<typeof setInterval> | null = null;
+
 onMounted(async () => {
   await session.refreshAdminUser(); // guard handled by router meta
   if (session.accessCode && !session.tournament) {
@@ -330,6 +334,14 @@ onMounted(async () => {
     await loadTeams();
     await loadCourts();
     await loadMatches();
+    refreshTimer = setInterval(() => void loadMatches(), 15_000);
+  }
+});
+
+onBeforeUnmount(() => {
+  if (refreshTimer) {
+    clearInterval(refreshTimer);
+    refreshTimer = null;
   }
 });
 </script>

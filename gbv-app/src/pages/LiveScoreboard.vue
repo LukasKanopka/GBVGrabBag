@@ -193,9 +193,8 @@ onBeforeUnmount(async () => {
         </div>
 
         <p class="mt-1 text-white/80">
-          Access Code: <span class="font-semibold text-white">{{ accessCode || '—' }}</span>
+          {{ matchLabel }}
         </p>
-        <p class="mt-1 text-sm text-white/80">{{ matchLabel }}</p>
 
         <div class="mt-6 grid grid-cols-1 gap-6">
           <div class="rounded-xl bg-white/10 ring-1 ring-white/20 p-6">

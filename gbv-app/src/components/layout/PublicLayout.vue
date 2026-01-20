@@ -1,12 +1,14 @@
 <script setup lang="ts">
-import { useRouter } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import { computed } from 'vue';
 import { useSessionStore } from '../../stores/session';
 
 const router = useRouter();
+const route = useRoute();
 const session = useSessionStore();
 
-const hasCode = computed(() => !!session.accessCode);
+const accessCode = computed(() => (route.params.accessCode as string) ?? session.accessCode ?? '');
+const hasCode = computed(() => !!accessCode.value);
 const tournamentName = computed(() => session.tournament?.name || 'Gator Beach Volleyball');
 const tournamentPhase = computed(() => {
   const st = session.tournament?.status;
@@ -55,19 +57,19 @@ async function changeCode() {
           <div class="flex items-center gap-2">
             <div
               v-if="hasCode"
-              class="hidden sm:flex items-center rounded-full bg-white/15 text-white/90 px-3 py-1 text-xs tracking-wide"
-              aria-label="Access code"
+              class="flex flex-col items-end gap-0.5"
             >
-              Code: <span class="ml-1 font-semibold">{{ session.accessCode }}</span>
+              <div class="pr-3 text-xs text-white/80 leading-tight text-right" aria-label="Access code">
+                Code: <span class="font-mono font-semibold text-white">{{ accessCode }}</span>
+              </div>
+              <button
+                type="button"
+                class="rounded-xl px-3 py-1.5 text-xs font-semibold text-white hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/70 transition-colors"
+                @click="changeCode"
+              >
+                Change code
+              </button>
             </div>
-            <button
-              v-if="hasCode"
-              type="button"
-              class="rounded-xl px-3 py-2 text-sm font-medium text-white hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/70 transition-colors"
-              @click="changeCode"
-            >
-              Change code
-            </button>
           </div>
         </div>
       </div>
