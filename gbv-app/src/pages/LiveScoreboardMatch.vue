@@ -433,6 +433,7 @@ async function subscribeRealtime() {
         filter: `id=eq.${matchId.value}`,
       },
       (payload) => {
+        if (import.meta.env.DEV) console.debug('[Realtime] LiveScoreboardMatch event', payload);
         if (payload.new) {
           const m = payload.new as Match;
           setFromMatch(m);
@@ -445,6 +446,7 @@ async function subscribeRealtime() {
     );
 
   await channel.subscribe((status) => {
+    if (import.meta.env.DEV) console.debug('[Realtime] LiveScoreboardMatch status', status);
     if (status === 'SUBSCRIBED') {
       void loadMatch();
     }

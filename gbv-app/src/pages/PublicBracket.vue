@@ -146,6 +146,7 @@ async function subscribeRealtime() {
       'postgres_changes',
       { event: '*', schema: 'public', table: 'matches', filter: `tournament_id=eq.${session.tournament.id}` },
       async (payload) => {
+        if (import.meta.env.DEV) console.debug('[Realtime] PublicBracket event', payload);
         const row = (payload.new ?? payload.old) as Match;
         if (row.match_type === 'bracket') {
           await loadMatches();
@@ -153,7 +154,9 @@ async function subscribeRealtime() {
       }
     );
 
-  await channel.subscribe();
+  await channel.subscribe((status) => {
+    if (import.meta.env.DEV) console.debug('[Realtime] PublicBracket status', status);
+  });
 }
 
 onMounted(async () => {

@@ -69,6 +69,7 @@ async function subscribeRealtime() {
       'postgres_changes',
       { event: '*', schema: 'public', table: 'matches', filter: `id=eq.${matchId.value}` },
       (payload) => {
+        if (import.meta.env.DEV) console.debug('[Realtime] MatchActions event', payload);
         if (payload.new) {
           match.value = payload.new as Match;
         } else if (payload.eventType === 'DELETE' && match.value?.id === matchId.value) {
@@ -77,7 +78,9 @@ async function subscribeRealtime() {
       }
     );
 
-  await channel.subscribe();
+  await channel.subscribe((status) => {
+    if (import.meta.env.DEV) console.debug('[Realtime] MatchActions status', status);
+  });
 }
 
 async function ensureTournament() {

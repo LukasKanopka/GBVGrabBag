@@ -348,6 +348,7 @@ async function subscribeRealtime() {
         filter: `tournament_id=eq.${session.tournament.id}`,
       },
       async (payload) => {
+        if (import.meta.env.DEV) console.debug('[Realtime] PublicPoolDetails event', payload);
         const row = (payload.new ?? payload.old) as Match;
         if (row.pool_id === poolId.value && row.match_type === 'pool') {
           await loadMatches();
@@ -356,7 +357,9 @@ async function subscribeRealtime() {
       }
     );
 
-  await channel.subscribe();
+  await channel.subscribe((status) => {
+    if (import.meta.env.DEV) console.debug('[Realtime] PublicPoolDetails status', status);
+  });
 }
 
 onMounted(async () => {

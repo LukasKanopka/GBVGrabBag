@@ -110,6 +110,31 @@ create unique index if not exists matches_bracket_round_index_uidx
 -- Composite order index to speed queries by round/index
 create index if not exists matches_bracket_order_idx
   on public.matches(tournament_id, match_type, bracket_round, bracket_match_index);
+
+-- =========================
+-- Realtime replication (postgres_changes)
+-- =========================
+-- Postgres Changes subscriptions only emit events for tables included in the `supabase_realtime` publication.
+-- You can also enable this in the Supabase dashboard (Database → Replication → Realtime).
+do $$
+begin
+  if not exists (select 1 from pg_publication where pubname = 'supabase_realtime') then
+    execute 'create publication supabase_realtime';
+  end if;
+end $$;
+
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_publication_tables
+    where pubname = 'supabase_realtime'
+      and schemaname = 'public'
+      and tablename = 'matches'
+  ) then
+    execute 'alter publication supabase_realtime add table public.matches';
+  end if;
+end $$;
 -- =========================
 -- schedule_templates
 -- =========================

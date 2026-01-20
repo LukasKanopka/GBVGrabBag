@@ -139,6 +139,7 @@ async function subscribeRealtime() {
         filter: `tournament_id=eq.${session.tournament.id}`,
       },
       (payload) => {
+        if (import.meta.env.DEV) console.debug('[Realtime] LiveScoreboard event', payload);
         const row = (payload.new ?? payload.old) as Match;
         // if current live match updated or a new live match started, reflect it
         if (payload.new) {
@@ -161,6 +162,7 @@ async function subscribeRealtime() {
     );
 
   await channel.subscribe((status) => {
+    if (import.meta.env.DEV) console.debug('[Realtime] LiveScoreboard status', status);
     if (status === 'SUBSCRIBED') {
       // initial fetch
       void loadCurrentLiveMatch();
