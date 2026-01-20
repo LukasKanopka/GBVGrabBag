@@ -9,7 +9,6 @@ import Dropdown from 'primevue/dropdown';
 import ToggleButton from 'primevue/togglebutton';
 import UiSectionHeading from '@/components/ui/UiSectionHeading.vue';
 import supabase from '../lib/supabase';
-import BracketView from '../components/BracketView.vue';
 import { useSessionStore } from '../stores/session';
 import { generateBracket, rebuildBracket, checkBracketPrerequisites, type BracketPrereqReport } from '../lib/bracket';
 import { fillRandomPoolScores } from '../lib/testData';
@@ -54,7 +53,6 @@ const lastOp = ref<'generate' | 'rebuild' | 'prereq' | null>(null);
 
 const matches = ref<Match[]>([]);
 const teams = ref<Team[]>([]);
-const courts = ref<string[]>([]);
 const teamOptions = computed(() =>
   [{ id: null, full_team_name: '— (TBD)' } as any].concat(teams.value)
     .map((t) => ({ label: t.full_team_name, value: t.id }))
@@ -156,37 +154,6 @@ async function loadTeams() {
     return;
   }
   teams.value = (data as Team[]) ?? [];
-}
-
-async function loadCourts() {
-  if (!session.tournament) {
-    courts.value = [];
-    return;
-  }
-  const { data, error } = await supabase
-    .from('pools')
-    .select('court_assignment')
-    .eq('tournament_id', session.tournament.id);
-  if (error) {
-    courts.value = [];
-    return;
-  }
-  const vals = ((data as Array<{ court_assignment: string | null }>) ?? [])
-    .map((p) => (p.court_assignment ?? '').trim())
-    .filter(Boolean);
-
-  const uniq = Array.from(new Set(vals));
-  uniq.sort((a, b) => {
-    const na = Number(a);
-    const nb = Number(b);
-    const aNum = Number.isFinite(na);
-    const bNum = Number.isFinite(nb);
-    if (aNum && bNum) return na - nb;
-    if (aNum && !bNum) return -1;
-    if (!aNum && bNum) return 1;
-    return a.localeCompare(b);
-  });
-  courts.value = uniq;
 }
 
 async function loadMatches() {
@@ -341,9 +308,6 @@ async function updateTeam(m: Match, side: 'team1_id' | 'team2_id', value: string
 function back() {
   router.push({ name: 'admin-dashboard' });
 }
-function openMatchById(id: string) {
-  router.push({ name: 'match-actions', params: { accessCode: session.accessCode, matchId: id }, query: { from: 'admin-bracket' } });
-}
 
 let refreshTimer: ReturnType<typeof setInterval> | null = null;
 
@@ -357,7 +321,6 @@ onMounted(async () => {
   }
   if (session.tournament) {
     await loadTeams();
-    await loadCourts();
     await loadMatches();
     refreshTimer = setInterval(() => void loadMatches(), 15_000);
   }
@@ -544,19 +507,6 @@ onBeforeUnmount(() => {
             </div>
             <div class="mt-1 text-white/80 font-medium">
               Thank you for playing!
-            </div>
-          </div>
-          <div class="rounded-lg border border-white/15 bg-white/5 overflow-hidden">
-            <div class="border-b border-white/15 px-4 py-3">
-              <div class="text-sm font-semibold">Bracket View</div>
-            </div>
-            <div class="p-2">
-              <BracketView
-                :matches="matches"
-                :teamNameById="teamNameById"
-                :courts="courts"
-                @open="openMatchById"
-              />
             </div>
           </div>
           <div v-for="[r, arr] in groupedByRound()" :key="r" class="rounded-lg border border-white/15 bg-white/5 overflow-hidden">
