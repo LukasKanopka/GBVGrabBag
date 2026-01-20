@@ -160,14 +160,23 @@ function finalScoreText(m: Match): string | null {
   return `${m.team1_score ?? 0}\u2013${m.team2_score ?? 0}`;
 }
 
+const canEditScore = computed(() => !!match.value?.team1_id && !!match.value?.team2_id);
 
 function goManual() {
   if (!match.value) return;
+  if (!canEditScore.value) {
+    toast.add({ severity: 'warn', summary: 'Teams not set', detail: 'Cannot enter a score until both teams are assigned.', life: 2200 });
+    return;
+  }
   router.push({ name: 'match-score', params: { accessCode: accessCode.value, matchId: match.value.id }, query: from.value ? { from: from.value } : undefined });
 }
 
 function goLive() {
   if (!match.value) return;
+  if (!canEditScore.value) {
+    toast.add({ severity: 'warn', summary: 'Teams not set', detail: 'Cannot start live scoring until both teams are assigned.', life: 2200 });
+    return;
+  }
   router.push({ name: 'match-live', params: { accessCode: accessCode.value, matchId: match.value.id }, query: from.value ? { from: from.value } : undefined });
 }
 
@@ -324,6 +333,7 @@ onBeforeUnmount(() => {
           <Button
             label="Enter Final Score"
             icon="pi pi-pencil"
+            :disabled="!canEditScore"
             severity="secondary"
             size="large"
             class="!rounded-2xl !px-6 !py-4 !text-lg !font-semibold text-white bg-white/10 ring-1 ring-white/20"
@@ -332,6 +342,7 @@ onBeforeUnmount(() => {
           <Button
             :label="isLiveActive(match) ? 'View Live Score' : 'Use Live Scoreboard'"
             icon="pi pi-bolt"
+            :disabled="!canEditScore"
             severity="secondary"
             size="large"
             class="!rounded-2xl !px-6 !py-4 !text-lg !font-semibold text-white bg-white/10 ring-1 ring-white/20"

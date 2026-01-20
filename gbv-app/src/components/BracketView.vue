@@ -187,7 +187,10 @@ function isRound1Bye(m: BracketMatch): boolean {
 }
 
 function isDisabled(m: BracketMatch): boolean {
-  return isRound1Bye(m);
+  // Don't allow opening match actions until both opponents are known.
+  // (Prevents scoring/editing for TBD matches.)
+  const hasBothTeams = !!m.team1_id && !!m.team2_id;
+  return !hasBothTeams || isRound1Bye(m);
 }
 
 function byeAdvancingTeamId(m: BracketMatch): string | null {

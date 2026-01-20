@@ -41,6 +41,8 @@ const loading = ref(false);
 const teamNameById = ref<Record<string, string>>({});
 const match = ref<Match | null>(null);
 
+const canEditScore = computed(() => !!match.value?.team1_id && !!match.value?.team2_id);
+
 const team1Score = ref<number | null>(null);
 const team2Score = ref<number | null>(null);
 
@@ -100,6 +102,10 @@ async function loadMatch() {
 
 async function submitScore() {
   if (!match.value || team1Score.value == null || team2Score.value == null) return;
+  if (!canEditScore.value) {
+    toast.add({ severity: 'warn', summary: 'Teams not set', detail: 'Cannot submit a score until both teams are assigned.', life: 2500 });
+    return;
+  }
 
   // Post-bracket warning (non-blocking)
   if (session.tournament?.status === 'bracket' || session.tournament?.bracket_started) {
@@ -266,7 +272,7 @@ onMounted(async () => {
 
       <div class="mt-6 flex items-center justify-center">
         <Button
-          :disabled="!match || team1Score === null || team2Score === null"
+          :disabled="!match || !canEditScore || team1Score === null || team2Score === null"
           label="Submit Score"
           severity="secondary"
           size="large"
