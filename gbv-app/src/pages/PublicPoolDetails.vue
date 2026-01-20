@@ -423,7 +423,15 @@ onBeforeUnmount(async () => {
               Court: <span class="font-medium">{{ pool?.court_assignment || 'TBD' }}</span>
             </p>
           </div>
-          <div v-if="loading" class="text-sm text-white/80">Loading…</div>
+          <div class="flex items-center gap-2">
+            <router-link
+              :to="{ name: 'public-leaderboard', params: { accessCode } }"
+              class="inline-flex items-center rounded-full bg-white/10 px-3 py-1 text-xs font-semibold text-white ring-1 ring-white/20 hover:bg-white/15 transition-colors whitespace-nowrap"
+            >
+              Leaderboard
+            </router-link>
+            <div v-if="loading" class="text-sm text-white/80">Loading…</div>
+          </div>
         </div>
 
         <!-- Standings -->

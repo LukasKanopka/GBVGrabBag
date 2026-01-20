@@ -51,6 +51,14 @@ const routes: RouteRecordRaw[] = [
     meta: { fullScreen: true, publicShell: true },
   },
 
+  // Global leaderboard (tournament-wide standings)
+  {
+    path: '/:accessCode/leaderboard',
+    name: 'public-leaderboard',
+    component: () => import('../pages/PublicLeaderboard.vue'),
+    meta: { fullScreen: true, publicShell: true },
+  },
+
   // Legacy public pages (kept for compatibility; may be removed later)
   {
     path: '/:accessCode/score',
