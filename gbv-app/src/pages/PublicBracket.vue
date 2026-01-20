@@ -45,6 +45,31 @@ const courts = ref<string[]>([]);
 
 let refreshTimer: ReturnType<typeof setInterval> | null = null;
 
+function winnerIdFor(m: Match): string | null {
+  const winId = m.winner_id ?? null;
+  const t1 = m.team1_id ?? null;
+  const t2 = m.team2_id ?? null;
+  if (winId && (winId === t1 || winId === t2)) return winId;
+  if (t1 && t2 && m.team1_score != null && m.team2_score != null) {
+    const s1 = m.team1_score ?? 0;
+    const s2 = m.team2_score ?? 0;
+    if (s1 === s2) return null;
+    return s1 > s2 ? t1 : t2;
+  }
+  return null;
+}
+
+const championName = computed(() => {
+  if (!matches.value.length) return null;
+  const maxRound = Math.max(0, ...matches.value.map((m) => m.bracket_round ?? 0));
+  if (!maxRound) return null;
+  const finalMatch = matches.value.find((m) => (m.bracket_round ?? 0) === maxRound && (m.bracket_match_index ?? 0) === 0) ?? null;
+  if (!finalMatch) return null;
+  const winId = winnerIdFor(finalMatch);
+  if (!winId) return null;
+  return teamNameById.value[winId] ?? 'TBD';
+});
+
 async function ensureTournament() {
   if (!accessCode.value) return;
   await session.ensureAnon();
@@ -197,6 +222,18 @@ onBeforeUnmount(async () => {
             </p>
           </div>
           <div v-if="loading" class="text-sm text-white/80">Loading…</div>
+        </div>
+
+        <div
+          v-if="championName"
+          class="mt-6 rounded-2xl bg-white/10 ring-2 ring-amber-300/60 p-5 text-center text-white"
+        >
+          <div class="text-2xl sm:text-3xl font-extrabold leading-tight">
+            {{ championName }} WON!! 🎉🎉
+          </div>
+          <div class="mt-1 text-white/80 font-medium">
+            Thank you for playing!
+          </div>
         </div>
 
         <div v-if="matches.length === 0" class="mt-6 rounded-xl border border-dashed border-white/30 p-6 text-center text-white/80">

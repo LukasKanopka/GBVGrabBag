@@ -66,6 +66,31 @@ const teamNameById = computed(() => {
 });
 
 const maxRound = computed(() => Math.max(0, ...matches.value.map(m => m.bracket_round || 0)));
+
+function winnerIdFor(m: Match): string | null {
+  const winId = m.winner_id ?? null;
+  const t1 = m.team1_id ?? null;
+  const t2 = m.team2_id ?? null;
+  if (winId && (winId === t1 || winId === t2)) return winId;
+  if (t1 && t2 && m.team1_score != null && m.team2_score != null) {
+    const s1 = m.team1_score ?? 0;
+    const s2 = m.team2_score ?? 0;
+    if (s1 === s2) return null;
+    return s1 > s2 ? t1 : t2;
+  }
+  return null;
+}
+
+const championName = computed(() => {
+  const mr = maxRound.value;
+  if (!mr) return null;
+  const finalMatch = matches.value.find((m) => (m.bracket_round ?? 0) === mr && (m.bracket_match_index ?? 0) === 0) ?? null;
+  if (!finalMatch) return null;
+  const winId = winnerIdFor(finalMatch);
+  if (!winId) return null;
+  return teamNameById.value[winId] ?? 'TBD';
+});
+
 function roundTitle(r: number) {
   const mr = maxRound.value;
   if (mr <= 1) return 'Final';
@@ -510,6 +535,17 @@ onBeforeUnmount(() => {
         </div>
 
         <div v-else class="grid gap-6">
+          <div
+            v-if="championName"
+            class="rounded-2xl bg-white/10 ring-2 ring-amber-300/60 p-5 text-center text-white"
+          >
+            <div class="text-2xl font-extrabold leading-tight">
+              {{ championName }} WON!! 🎉🎉
+            </div>
+            <div class="mt-1 text-white/80 font-medium">
+              Thank you for playing!
+            </div>
+          </div>
           <div class="rounded-lg border border-white/15 bg-white/5 overflow-hidden">
             <div class="border-b border-white/15 px-4 py-3">
               <div class="text-sm font-semibold">Bracket View</div>

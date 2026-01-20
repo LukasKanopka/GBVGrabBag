@@ -398,7 +398,7 @@ function onOpen(m: BracketMatch) {
               <template v-if="isRound1Bye(m)">
                 <div class="tile-row" :class="{ 'tile-row--winner': !!winnerSide(m) }">
                   <div class="team-name">{{ nameFor(byeAdvancingTeamId(m)) }}</div>
-                  <span class="pill pill-winner" v-if="!!winnerSide(m)">WIN</span>
+                  <span class="pill pill-bye">BYE</span>
                 </div>
                 <div class="tile-subrow">{{ byeAdvancesText(m) }}</div>
               </template>
@@ -527,11 +527,21 @@ function onOpen(m: BracketMatch) {
 }
 
 .match-tile--done {
-  border-color: rgba(34,197,94,0.35);
+  border-color: rgba(250,204,21,0.65);
+  box-shadow: 0 0 0 1px rgba(250,204,21,0.20);
+}
+
+.match-tile--done:hover {
+  border-color: rgba(250,204,21,0.85);
 }
 
 .match-tile--live {
-  border-color: rgba(248,113,113,0.45);
+  border-color: rgba(220,38,38,0.85);
+  box-shadow: 0 0 0 1px rgba(220,38,38,0.22);
+}
+
+.match-tile--live:hover {
+  border-color: rgba(220,38,38,0.95);
 }
 
 .tile-row {
@@ -640,6 +650,12 @@ function onOpen(m: BracketMatch) {
   color: rgba(15,23,42,0.95);
   background: rgba(250,204,21,0.92);
   border: 1px solid rgba(250,204,21,0.85);
+}
+
+.pill-bye {
+  color: rgba(255,255,255,0.95);
+  background: rgba(59,130,246,0.92);
+  border: 1px solid rgba(59,130,246,0.85);
 }
 
 /* SVG overlay */

@@ -15,6 +15,11 @@ type PoolRec = {
   name: string;
 };
 
+type PoolNameRec = {
+  id: string;
+  name: string;
+};
+
 type TemplateRec = {
   template_data: ScheduleTemplateRound[];
 };
@@ -37,6 +42,20 @@ function bySeed(teams: TeamRec[]) {
 export async function checkPrerequisites(tournamentId: string): Promise<{ ok: boolean; errors: string[] }> {
   const errors: string[] = [];
 
+  const { data: poolsData, error: poolsErr } = await supabase
+    .from('pools')
+    .select('id,name')
+    .eq('tournament_id', tournamentId);
+
+  const poolNameById = new Map<string, string>();
+  if (poolsErr) {
+    errors.push(`Failed to load pools: ${poolsErr.message}`);
+  } else {
+    for (const p of ((poolsData as PoolNameRec[]) ?? [])) {
+      poolNameById.set(p.id, p.name);
+    }
+  }
+
   const { data: teams, error: teamsErr } = await supabase
     .from('teams')
     .select('id,pool_id,seed_in_pool,seeded_player_name,full_team_name')
@@ -44,8 +63,10 @@ export async function checkPrerequisites(tournamentId: string): Promise<{ ok: bo
 
   if (teamsErr) return { ok: false, errors: [`Failed to load teams: ${teamsErr.message}`] };
 
+  const teamRows = (teams as TeamRec[]) ?? [];
+
   // 1) Teams must have a "real" team name (not just the seeded player)
-  const missingTeamNames = (teams as TeamRec[]).filter((t) => {
+  const missingTeamNames = teamRows.filter((t) => {
     const seeded = (t.seeded_player_name || '').trim().toLowerCase();
     const full = (t.full_team_name || '').trim().toLowerCase();
     return !seeded || !full || full === seeded;
@@ -56,9 +77,46 @@ export async function checkPrerequisites(tournamentId: string): Promise<{ ok: bo
 
   // 2) Schedule templates must exist for each pool size
   const poolSizeToCount = new Map<string, number>(); // key = pool_id, value = size
-  for (const t of teams as TeamRec[]) {
+  for (const t of teamRows) {
     if (!t.pool_id) continue;
     poolSizeToCount.set(t.pool_id, (poolSizeToCount.get(t.pool_id) ?? 0) + 1);
+  }
+
+  // 2b) Every team in a scheduled pool must have a valid seed (1..pool size), else schedule generation maps to null teams.
+  for (const [poolId, poolSize] of poolSizeToCount.entries()) {
+    const poolLabel = poolNameById.get(poolId) ?? `Pool ${poolId.slice(0, 8)}…`;
+    const group = teamRows.filter((t) => t.pool_id === poolId);
+
+    const missingSeedTeams = group.filter((t) => t.seed_in_pool == null);
+    if (missingSeedTeams.length > 0) {
+      const names = missingSeedTeams
+        .map((t) => (t.full_team_name || t.seeded_player_name || '').trim())
+        .filter(Boolean)
+        .slice(0, 6);
+      const suffix = missingSeedTeams.length > names.length ? `, …(+${missingSeedTeams.length - names.length} more)` : '';
+      errors.push(`Missing pool seeds: ${poolLabel} has ${missingSeedTeams.length} team(s) without a seed${names.length ? ` (${names.join(', ')}${suffix})` : ''}.`);
+      continue;
+    }
+
+    const seeds = group.map((t) => t.seed_in_pool).filter((n): n is number => n != null);
+    const seen = new Set<number>();
+    const duplicates = new Set<number>();
+    for (const n of seeds) {
+      if (seen.has(n)) duplicates.add(n);
+      seen.add(n);
+    }
+    if (duplicates.size > 0) {
+      const dup = Array.from(duplicates).sort((a, b) => a - b);
+      errors.push(`Duplicate pool seeds: ${poolLabel} has duplicate seed(s): ${dup.join(', ')}.`);
+    }
+
+    // If all teams have seeds, ensure they're in the valid range for the pool size.
+    const outOfRange = seeds.filter((n) => !Number.isInteger(n) || n < 1 || n > poolSize);
+
+    if (outOfRange.length > 0) {
+      const uniq = Array.from(new Set(outOfRange)).sort((a, b) => a - b);
+      errors.push(`Invalid pool seeds: ${poolLabel} seeds must be 1–${poolSize}. Found ${uniq.join(', ')}.`);
+    }
   }
 
   const sizesNeeded = Array.from(new Set(Array.from(poolSizeToCount.values()))).sort((a, b) => a - b);
