@@ -24,13 +24,19 @@ const props = withDefaults(
     teamNameById: Record<string, string>;
     // Court labels, e.g. ["1","2","3"]. If empty, court assignment shows TBD.
     courts?: string[];
-    // Optional: show round titles
-    showTitles?: boolean;
-    // When true, render an internal scroll container (overflow: auto).
-    // When false, let the parent/page handle scrolling (enables full-page diagonal scroll).
-    scroll?: boolean;
-  }>(),
-  { scroll: true }
+	    // Optional: show round titles
+	    showTitles?: boolean;
+	    /**
+	     * On small screens, BracketView constrains its scroll container height so the bracket can
+	     * be panned both directions. This value reserves vertical space for page chrome outside
+	     * the bracket viewport.
+	     */
+	    mobileMaxHeightOffsetPx?: number;
+	    // When true, render an internal scroll container (overflow: auto).
+	    // When false, let the parent/page handle scrolling (enables full-page diagonal scroll).
+	    scroll?: boolean;
+	  }>(),
+	  { scroll: true }
 );
 
 const emit = defineEmits<{
@@ -52,7 +58,7 @@ function onViewportScroll() {
 }
 
 const scrollStyle = computed(() => {
-  const offsetPx = props.mobileMaxHeightOffsetPx ?? 260;
+  const offsetPx = props.mobileMaxHeightOffsetPx ?? 200;
   return { '--bracket-scroll-offset': `${offsetPx}px` } as any;
 });
 
@@ -492,7 +498,7 @@ function onOpen(m: BracketMatch) {
 
 <style scoped>
 .bracket-scroll {
-  --bracket-scroll-offset: 260px;
+  --bracket-scroll-offset: 200px;
   width: 100%;
   overflow: auto;
   padding-bottom: 8px;
@@ -513,7 +519,7 @@ function onOpen(m: BracketMatch) {
 /* On small screens, constrain height so the bracket can be panned both directions (like a map). */
 @media (max-width: 640px) {
   .bracket-scroll {
-    max-height: calc(100dvh - var(--bracket-scroll-offset, 260px));
+    max-height: calc(100dvh - var(--bracket-scroll-offset, 200px));
   }
 }
 

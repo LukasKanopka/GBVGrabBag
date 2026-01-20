@@ -40,7 +40,7 @@ const accessCode = computed(() => (route.params.accessCode as string) ?? session
 const loading = ref(false);
 
 const bracketChromeHidden = ref(false);
-const mobileBracketOffsetPx = computed(() => (bracketChromeHidden.value ? 140 : 260));
+const mobileBracketOffsetPx = computed(() => (bracketChromeHidden.value ? 110 : 200));
 function onBracketViewportScroll(pos: { left: number; top: number }) {
   bracketChromeHidden.value = pos.left > 0 || pos.top > 0;
 }
@@ -218,8 +218,11 @@ onBeforeUnmount(async () => {
 </script>
 
 <template>
-  <PublicLayout :stickyHeader="false">
-    <section class="p-5 sm:p-7">
+  <PublicLayout>
+    <section
+      class="px-5 sm:px-7 pb-2"
+      :class="bracketChromeHidden ? 'pt-2 sm:pt-3' : 'pt-5 sm:pt-7'"
+    >
       <div v-show="!bracketChromeHidden" class="flex items-center justify-between gap-3">
         <div>
           <h2 class="text-2xl font-semibold text-white">Bracket</h2>
@@ -240,7 +243,7 @@ onBeforeUnmount(async () => {
 
       <div
         v-if="championName && !bracketChromeHidden"
-        class="mt-6 rounded-2xl bg-white/10 ring-2 ring-amber-300/60 p-5 text-center text-white"
+        class="mt-4 rounded-2xl bg-white/10 ring-2 ring-amber-300/60 p-5 text-center text-white"
       >
         <div class="text-2xl sm:text-3xl font-extrabold leading-tight">
           {{ championName }} WON!! 🎉🎉
@@ -254,8 +257,8 @@ onBeforeUnmount(async () => {
         No bracket matches yet.
       </div>
 
-      <div v-else :class="bracketChromeHidden ? '' : 'mt-6'">
-        <div class="-mx-5 sm:-mx-7">
+      <div v-else :class="bracketChromeHidden ? '' : 'mt-4'">
+        <div class="-mx-5 sm:-mx-7 -mb-10">
           <BracketView
             :matches="matches"
             :teamNameById="teamNameById"
@@ -265,13 +268,6 @@ onBeforeUnmount(async () => {
             @open="openMatchById"
           />
         </div>
-      </div>
-
-      <div v-show="!bracketChromeHidden" class="mt-8 text-sm text-white/80 text-center">
-        Back to
-        <router-link class="underline" :to="{ name: 'tournament-public', params: { accessCode } }">
-          Tournament
-        </router-link>
       </div>
     </section>
   </PublicLayout>
