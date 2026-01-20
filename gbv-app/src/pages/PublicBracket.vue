@@ -250,7 +250,7 @@ onBeforeUnmount(async () => {
 
         <div v-else class="mt-6">
           <div class="-mx-5 sm:-mx-7">
-            <BracketView :matches="matches" :teamNameById="teamNameById" :courts="courts" @open="openMatchById" />
+            <BracketView :matches="matches" :teamNameById="teamNameById" :courts="courts" :scroll="false" @open="openMatchById" />
           </div>
         </div>
 

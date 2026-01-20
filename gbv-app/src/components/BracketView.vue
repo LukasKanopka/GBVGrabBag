@@ -18,14 +18,20 @@ export interface BracketMatch {
   live_last_active_at?: string | null;
 }
 
-const props = defineProps<{
-  matches: BracketMatch[];
-  teamNameById: Record<string, string>;
-  // Court labels, e.g. ["1","2","3"]. If empty, court assignment shows TBD.
-  courts?: string[];
-  // Optional: show round titles
-  showTitles?: boolean;
-}>();
+const props = withDefaults(
+  defineProps<{
+    matches: BracketMatch[];
+    teamNameById: Record<string, string>;
+    // Court labels, e.g. ["1","2","3"]. If empty, court assignment shows TBD.
+    courts?: string[];
+    // Optional: show round titles
+    showTitles?: boolean;
+    // When true, render an internal scroll container (overflow: auto).
+    // When false, let the parent/page handle scrolling (enables full-page diagonal scroll).
+    scroll?: boolean;
+  }>(),
+  { scroll: true }
+);
 
 const emit = defineEmits<{
   (e: 'open', matchId: string): void;
@@ -346,7 +352,7 @@ function onOpen(m: BracketMatch) {
 </script>
 
 <template>
-  <div class="bracket-scroll" v-if="grouped.length">
+  <div :class="props.scroll ? 'bracket-scroll' : ''" v-if="grouped.length">
     <div class="bracket-root" :style="{ minWidth: bracketWidth + 'px' }">
       <!-- Titles row (separate from connector coordinate space) -->
       <div v-if="showTitles !== false" class="bracket-head" :style="{ height: TITLE_HEIGHT + 'px' }">
