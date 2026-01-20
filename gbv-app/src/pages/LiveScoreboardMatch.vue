@@ -50,8 +50,11 @@ const liveLastActiveAt = ref<string | null>(null);
 const myUserId = ref<string | null>(null);
 const pausedForInactivity = ref(false);
 
-const LOCK_TIMEOUT_MS = 4 * 60 * 1000;
+// Live is treated as a short lease that must be renewed by heartbeat.
+// This makes the "only one controller" rule robust even if a user closes the tab.
+const LIVE_LEASE_MS = 90 * 1000;
 const HEARTBEAT_MS = 30 * 1000;
+const INACTIVITY_PAUSE_MS = 4 * 60 * 1000;
 
 // team names cache
 const teamNameById = ref<Record<string, string>>({});
@@ -83,6 +86,15 @@ function nameFor(id: string | null) {
   return (id && teamNameById.value[id]) || 'TBD';
 }
 
+function isLiveLeaseActive(m: Match): boolean {
+  if (!m.is_live) return false;
+  if (!m.live_owner_id) return false;
+  if (!m.live_last_active_at) return false;
+  const t = Date.parse(m.live_last_active_at);
+  if (!Number.isFinite(t)) return false;
+  return (Date.now() - t) <= LIVE_LEASE_MS;
+}
+
 function setFromMatch(m: Match | null) {
   if (!m) {
     liveMatchId.value = null;
@@ -106,7 +118,7 @@ function setFromMatch(m: Match | null) {
   roundNumber.value = m.round_number ?? null;
   score1.value = Math.max(0, m.live_score_team1 ?? 0);
   score2.value = Math.max(0, m.live_score_team2 ?? 0);
-  isLive.value = !!m.is_live;
+  isLive.value = isLiveLeaseActive(m) || (!!myUserId.value && m.live_owner_id === myUserId.value);
   liveOwnerId.value = m.live_owner_id ?? null;
   liveLastActiveAt.value = m.live_last_active_at ?? null;
   matchType.value = m.match_type;
@@ -150,7 +162,7 @@ async function claimLiveIfPossible() {
 
   pausedForInactivity.value = false;
   const nowIso = new Date().toISOString();
-  const staleIso = new Date(Date.now() - LOCK_TIMEOUT_MS).toISOString();
+  const staleIso = new Date(Date.now() - LIVE_LEASE_MS).toISOString();
 
   const { data, error } = await supabase
     .from('matches')
@@ -163,7 +175,7 @@ async function claimLiveIfPossible() {
     })
     .eq('tournament_id', session.tournament.id)
     .eq('id', matchId.value)
-    .or(`is_live.eq.false,live_owner_id.eq.${myUserId.value},live_last_active_at.is.null,live_last_active_at.lt.${staleIso}`)
+    .or(`is_live.eq.false,live_owner_id.is.null,live_owner_id.eq.${myUserId.value},live_last_active_at.is.null,live_last_active_at.lt.${staleIso}`)
     .select('id,tournament_id,pool_id,team1_id,team2_id,is_live,live_score_team1,live_score_team2,live_owner_id,live_last_active_at,match_type,round_number');
 
   if (error) {
@@ -484,7 +496,7 @@ onMounted(async () => {
   heartbeatTimer = setInterval(() => void heartbeat(), HEARTBEAT_MS);
   inactivityTimer = setInterval(() => {
     if (!canControl.value) return;
-    if (Date.now() - lastInteractionAt.value >= LOCK_TIMEOUT_MS) {
+    if (Date.now() - lastInteractionAt.value >= INACTIVITY_PAUSE_MS) {
       void pauseLiveSession('Inactive for 4 minutes');
     }
   }, 10_000);

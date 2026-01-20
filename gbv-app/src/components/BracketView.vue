@@ -123,7 +123,7 @@ function tileRightXFor(round: number): number {
   return colStartXFor(round) + TILE_WIDTH;
 }
 
-const LIVE_STALE_MS = 4 * 60 * 1000;
+const LIVE_LEASE_MS = 90 * 1000;
 const now = ref<number>(Date.now());
 let nowTimer: ReturnType<typeof setInterval> | null = null;
 onMounted(() => {
@@ -138,11 +138,13 @@ onBeforeUnmount(() => {
 
 function isLiveActive(m: BracketMatch): boolean {
   if (!m.is_live) return false;
+  // Treat "live" as a short lease: only show live when an owner exists and heartbeats are recent.
+  // This avoids phantom LIVE when a session wasn't properly released.
+  if (!m.live_last_active_at) return false;
   const ts = m.live_last_active_at ?? null;
-  if (!ts) return true;
   const t = Date.parse(ts);
-  if (!Number.isFinite(t)) return true;
-  return (now.value - t) <= LIVE_STALE_MS;
+  if (!Number.isFinite(t)) return false;
+  return (now.value - t) <= LIVE_LEASE_MS;
 }
 
 // Helpers to detect BYE in Round 1

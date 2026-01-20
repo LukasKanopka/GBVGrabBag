@@ -15,6 +15,7 @@ type Match = {
   is_live: boolean;
   live_score_team1: number | null;
   live_score_team2: number | null;
+  live_owner_id?: string | null;
   live_last_active_at: string | null;
   match_type: 'pool' | 'bracket';
   round_number: number | null;
@@ -34,7 +35,7 @@ const score2 = ref<number>(0);
 const isLive = ref<boolean>(false);
 const matchLabel = ref<string>('No live match');
 const matchType = ref<'pool' | 'bracket' | null>(null);
-const LIVE_STALE_MS = 4 * 60 * 1000;
+const LIVE_LEASE_MS = 90 * 1000;
 
 // team names cache
 const teamNameById = ref<Record<string, string>>({});
@@ -77,13 +78,19 @@ function setFromMatch(m: Match | null) {
     matchLabel.value = 'No live match';
     return;
   }
-  if (m.live_last_active_at) {
-    const t = Date.parse(m.live_last_active_at);
-    if (Number.isFinite(t) && (Date.now() - t) > LIVE_STALE_MS) {
-      // stale session: don't show as live
-      setFromMatch(null);
-      return;
-    }
+  if (!m.live_owner_id) {
+    setFromMatch(null);
+    return;
+  }
+  if (!m.live_last_active_at) {
+    setFromMatch(null);
+    return;
+  }
+  const t = Date.parse(m.live_last_active_at);
+  if (!Number.isFinite(t) || (Date.now() - t) > LIVE_LEASE_MS) {
+    // stale session: don't show as live
+    setFromMatch(null);
+    return;
   }
   liveMatchId.value = m.id;
   team1Id.value = m.team1_id;
@@ -101,7 +108,7 @@ async function loadCurrentLiveMatch() {
   // get first live match for this tournament
   const { data, error } = await supabase
     .from('matches')
-    .select('id,tournament_id,team1_id,team2_id,is_live,live_score_team1,live_score_team2,live_last_active_at,match_type,round_number')
+    .select('id,tournament_id,team1_id,team2_id,is_live,live_score_team1,live_score_team2,live_owner_id,live_last_active_at,match_type,round_number')
     .eq('tournament_id', session.tournament.id)
     .eq('is_live', true)
     .limit(1);

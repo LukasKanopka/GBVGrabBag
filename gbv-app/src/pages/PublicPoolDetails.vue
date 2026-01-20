@@ -56,13 +56,14 @@ const now = ref<number>(Date.now());
 let nowTimer: ReturnType<typeof setInterval> | null = null;
 let refreshTimer: ReturnType<typeof setInterval> | null = null;
 
-const LIVE_STALE_MS = 4 * 60 * 1000;
+const LIVE_LEASE_MS = 90 * 1000;
 function isLiveActive(m: Match): boolean {
   if (!m.is_live) return false;
-  if (!m.live_last_active_at) return true;
+  if (!m.live_owner_id) return false;
+  if (!m.live_last_active_at) return false;
   const t = Date.parse(m.live_last_active_at);
-  if (!Number.isFinite(t)) return true;
-  return (now.value - t) <= LIVE_STALE_MS;
+  if (!Number.isFinite(t)) return false;
+  return (now.value - t) <= LIVE_LEASE_MS;
 }
 
 type Standing = {
