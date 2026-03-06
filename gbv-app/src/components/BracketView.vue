@@ -300,7 +300,8 @@ const metaByMatchId = computed<Record<string, DerivedMeta>>(() => {
       return a.id.localeCompare(b.id);
     });
 
-  // Court assignment per round: use courts from lowest to highest, wrap.
+  // Court assignment per round: use a centered window of courts for that round (biased upward),
+  // so as rounds shrink we converge toward the middle courts (e.g. with 1–5 courts, finals on 3).
   const courtIndexById = new Map<string, number>();
   if (hasCourts) {
     const byRound = new Map<number, BracketMatch[]>();
@@ -312,8 +313,14 @@ const metaByMatchId = computed<Record<string, DerivedMeta>>(() => {
     }
     for (const [_r, arr] of byRound.entries()) {
       arr.sort((a, b) => (a.bracket_match_index ?? 0) - (b.bracket_match_index ?? 0));
-      for (let i = 0; i < arr.length; i++) {
-        courtIndexById.set(arr[i].id, i % courts.length);
+      const N = courts.length;
+      const M = arr.length;
+      const K = Math.min(N, M);
+      if (K <= 0) continue;
+      const start = Math.ceil((N - K) / 2);
+      for (let i = 0; i < M; i++) {
+        const courtIndex = start + (i % K);
+        courtIndexById.set(arr[i].id, courtIndex);
       }
     }
   }
