@@ -53,6 +53,10 @@ create unique index if not exists teams_pool_seed_uidx on public.teams(pool_id, 
 create index if not exists teams_tournament_idx on public.teams(tournament_id);
 create index if not exists teams_pool_idx on public.teams(pool_id);
 
+-- Enforce unique team names per tournament (case-insensitive)
+create unique index if not exists teams_tournament_full_team_name_ci_uidx
+  on public.teams(tournament_id, lower(full_team_name));
+
 -- Unique per tournament when present
 create unique index if not exists teams_tournament_seed_global_uidx
   on public.teams(tournament_id, seed_global)

@@ -11,7 +11,7 @@ type MatchCandidate = {
 
 type PoolRule = {
   setTarget: number;
-  cap: number;
+  cap: number | null;
   winBy2: boolean;
 };
 
@@ -67,7 +67,7 @@ function generatePlausibleSet(target: number, cap: number, winBy2: boolean): [nu
   }
 }
 
-async function loadPoolRules(tournamentId: string): Promise<PoolRule> {
+async function loadBasePoolRules(tournamentId: string): Promise<PoolRule> {
   const { data, error } = await supabase
     .from('tournaments')
     .select('id,game_rules')
@@ -79,9 +79,14 @@ async function loadPoolRules(tournamentId: string): Promise<PoolRule> {
   const t = data as Tournament;
   const pool = (t.game_rules?.pool as any) || {};
   const setTarget = Number(pool.setTarget ?? 21);
-  const cap = Number(pool.cap ?? 25);
+  const cap = pool.cap == null ? 25 : Number(pool.cap);
   const winBy2 = Boolean(pool.winBy2 ?? true);
   return { setTarget, cap, winBy2 };
+}
+
+function rulesForPoolSize(poolSize: number | null, base: PoolRule): PoolRule {
+  if (poolSize === 3) return { setTarget: 28, cap: null, winBy2: true };
+  return base;
 }
 
 /**
@@ -92,12 +97,41 @@ async function loadPoolRules(tournamentId: string): Promise<PoolRule> {
  */
 export async function fillRandomPoolScores(tournamentId: string): Promise<FillResult> {
   const errors: string[] = [];
-  const rules = await loadPoolRules(tournamentId);
+  const baseRules = await loadBasePoolRules(tournamentId);
+
+  // Pool sizes (prefer pools.target_size; fallback to count teams assigned)
+  const poolSizeById = new Map<string, number>();
+  {
+    const { data } = await supabase
+      .from('pools')
+      .select('id,target_size')
+      .eq('tournament_id', tournamentId);
+    for (const p of ((data as any[]) ?? [])) {
+      const pid = String(p.id || '');
+      const sz = Number(p.target_size);
+      if (pid && Number.isFinite(sz) && sz > 0) poolSizeById.set(pid, sz);
+    }
+  }
+  {
+    const { data } = await supabase
+      .from('teams')
+      .select('id,pool_id')
+      .eq('tournament_id', tournamentId);
+    const counts = new Map<string, number>();
+    for (const t of ((data as any[]) ?? [])) {
+      const pid = t.pool_id ? String(t.pool_id) : '';
+      if (!pid) continue;
+      counts.set(pid, (counts.get(pid) ?? 0) + 1);
+    }
+    for (const [pid, c] of counts.entries()) {
+      if (!poolSizeById.has(pid) && c > 0) poolSizeById.set(pid, c);
+    }
+  }
 
   // Fetch only null-scored pool matches with both teams assigned
   const { data, error } = await supabase
     .from('matches')
-    .select('id,team1_id,team2_id')
+    .select('id,pool_id,team1_id,team2_id')
     .eq('tournament_id', tournamentId)
     .eq('match_type', 'pool')
     .is('team1_score', null)
@@ -109,12 +143,15 @@ export async function fillRandomPoolScores(tournamentId: string): Promise<FillRe
     return { updated: 0, errors: [`Failed to load matches: ${error.message}`] };
   }
 
-  const candidates: MatchCandidate[] = (data as any[]) ?? [];
+  const candidates: Array<MatchCandidate & { pool_id?: string | null }> = (data as any[]) ?? [];
   let updated = 0;
 
   for (const m of candidates) {
     try {
-      const [w, l] = generatePlausibleSet(rules.setTarget, rules.cap, rules.winBy2);
+      const sz = m.pool_id ? (poolSizeById.get(String(m.pool_id)) ?? null) : null;
+      const rules = rulesForPoolSize(sz, baseRules);
+      const cap = rules.cap == null ? (rules.setTarget + 6) : rules.cap;
+      const [w, l] = generatePlausibleSet(rules.setTarget, cap, rules.winBy2);
       const team1Wins = Math.random() < 0.5;
       const team1_score = team1Wins ? w : l;
       const team2_score = team1Wins ? l : w;

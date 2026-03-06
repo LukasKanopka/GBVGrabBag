@@ -600,13 +600,15 @@ export async function generateBracket(tournamentId: string): Promise<{ inserted:
 
 /**
  * Load advancement counts per pool size from tournament rules.
- * Defaults: 4-team => 2 advance, 5-team => 3 advance.
+ * Defaults: 3-team => 2 advance, 4-team => 2 advance, 5-team => 2 advance, 6-team => 3 advance.
  */
 async function loadAdvancementPoolRules(tournamentId: string): Promise<Map<number, number>> {
   const map = new Map<number, number>();
   // defaults
+  map.set(3, 2);
   map.set(4, 2);
-  map.set(5, 3);
+  map.set(5, 2);
+  map.set(6, 3);
 
   const { data, error } = await supabase
     .from('tournaments')

@@ -266,7 +266,7 @@ async function runGenerate() {
     </div>
 
     <div class="mt-6 text-sm text-white/80">
-      Note: Generation uses admin-defined templates per pool size. Only pool sizes 4–5 are supported. Ensure all teams have a full team name and templates exist for each size in use.
+      Note: Generation uses admin-defined templates per pool size. Supported pool sizes are 3–6. Ensure templates exist for each size in use.
     </div>
   </section>
 </template>

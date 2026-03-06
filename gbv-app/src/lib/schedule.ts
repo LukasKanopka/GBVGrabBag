@@ -6,7 +6,6 @@ type TeamRec = {
   id: string;
   pool_id: string | null;
   seed_in_pool: number | null;
-  seeded_player_name: string;
   full_team_name: string;
 };
 
@@ -58,21 +57,17 @@ export async function checkPrerequisites(tournamentId: string): Promise<{ ok: bo
 
   const { data: teams, error: teamsErr } = await supabase
     .from('teams')
-    .select('id,pool_id,seed_in_pool,seeded_player_name,full_team_name')
+    .select('id,pool_id,seed_in_pool,full_team_name')
     .eq('tournament_id', tournamentId);
 
   if (teamsErr) return { ok: false, errors: [`Failed to load teams: ${teamsErr.message}`] };
 
   const teamRows = (teams as TeamRec[]) ?? [];
 
-  // 1) Teams must have a "real" team name (not just the seeded player)
-  const missingTeamNames = teamRows.filter((t) => {
-    const seeded = (t.seeded_player_name || '').trim().toLowerCase();
-    const full = (t.full_team_name || '').trim().toLowerCase();
-    return !seeded || !full || full === seeded;
-  });
+  // 1) Teams must have a non-empty team name
+  const missingTeamNames = teamRows.filter((t) => !(t.full_team_name || '').trim());
   if (missingTeamNames.length > 0) {
-    errors.push(`Team naming incomplete: ${missingTeamNames.length} team(s) missing a second player or team name.`);
+    errors.push(`Team naming incomplete: ${missingTeamNames.length} team(s) missing a team name.`);
   }
 
   // 2) Schedule templates must exist for each pool size
@@ -90,7 +85,7 @@ export async function checkPrerequisites(tournamentId: string): Promise<{ ok: bo
     const missingSeedTeams = group.filter((t) => t.seed_in_pool == null);
     if (missingSeedTeams.length > 0) {
       const names = missingSeedTeams
-        .map((t) => (t.full_team_name || t.seeded_player_name || '').trim())
+        .map((t) => (t.full_team_name || '').trim())
         .filter(Boolean)
         .slice(0, 6);
       const suffix = missingSeedTeams.length > names.length ? `, …(+${missingSeedTeams.length - names.length} more)` : '';
@@ -121,11 +116,11 @@ export async function checkPrerequisites(tournamentId: string): Promise<{ ok: bo
 
   const sizesNeeded = Array.from(new Set(Array.from(poolSizeToCount.values()))).sort((a, b) => a - b);
 
-  // Enforce supported pool sizes (4–5)
-  const allowedSizes = new Set<number>([4, 5]);
+  // Enforce supported pool sizes (3–6)
+  const allowedSizes = new Set<number>([3, 4, 5, 6]);
   const invalidSizes = sizesNeeded.filter((sz) => !allowedSizes.has(sz));
   for (const sz of invalidSizes) {
-    errors.push(`Unsupported pool size ${sz}. Only 4–5 are supported.`);
+    errors.push(`Unsupported pool size ${sz}. Only 3–6 are supported.`);
   }
 
   // Ensure templates exist or auto-seed for supported sizes
@@ -178,7 +173,7 @@ export async function generateSchedule(tournamentId: string): Promise<GenerateRe
 
   const { data: teamsData, error: teamsErr } = await supabase
     .from('teams')
-    .select('id,pool_id,seed_in_pool,seeded_player_name,full_team_name')
+    .select('id,pool_id,seed_in_pool,full_team_name')
     .eq('tournament_id', tournamentId);
 
   if (teamsErr) return { inserted: 0, errors: [`Failed to load teams: ${teamsErr.message}`] };

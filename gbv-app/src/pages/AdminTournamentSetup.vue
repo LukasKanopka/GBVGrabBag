@@ -45,8 +45,10 @@ const statusOptions: { label: string; value: TournamentStatus }[] = [
 // Defaults per Bundle C
 const DEFAULT_ADV_RULES: AdvancementRules = {
   pools: [
+    { fromPoolSize: 3, advanceCount: 2 },
     { fromPoolSize: 4, advanceCount: 2 },
     { fromPoolSize: 5, advanceCount: 2 },
+    { fromPoolSize: 6, advanceCount: 3 },
   ],
   bracketFormat: 'single_elimination',
   tiebreakers: ['head_to_head', 'set_ratio', 'point_diff', 'random'],
@@ -286,9 +288,9 @@ async function saveTournament() {
         const newId = (data as Tournament).id;
         selectedId.value = newId;
 
-        // Auto-seed default schedule templates for 4- and 5-team pools if missing
+        // Auto-seed default schedule templates for supported pool sizes if missing
         try {
-          const sizesToSeed = [4, 5];
+          const sizesToSeed = [3, 4, 5, 6];
           const payloads = sizesToSeed
             .map((sz) => ({
               tournament_id: newId,

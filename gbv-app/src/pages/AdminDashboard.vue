@@ -66,16 +66,14 @@ async function loadStats() {
     // Teams stats
     const { data: teams, error: tErr } = await supabase
       .from('teams')
-      .select('seeded_player_name, full_team_name, pool_id')
+      .select('full_team_name, pool_id')
       .eq('tournament_id', tId);
     
     if (!tErr && teams) {
       stats.value.totalTeams = teams.length;
       stats.value.teamsInPool = teams.filter(t => !!t.pool_id).length;
-      // If full name differs from seeded name, we assume the team has been fully named.
-      stats.value.teamsNamed = teams.filter(t =>
-        (t.full_team_name || '').trim() !== (t.seeded_player_name || '').trim()
-      ).length;
+      // Canonical name is full_team_name; treat non-empty as "named".
+      stats.value.teamsNamed = teams.filter(t => (t.full_team_name || '').trim().length > 0).length;
     }
 
     // Pool matches
@@ -116,9 +114,6 @@ const navItems = computed<NavItem[]>(() => {
   const s = stats.value;
   const hasTournament = !!session.tournament;
 
-  // Determine team naming status
-  const namesMissing = s.totalTeams - s.teamsNamed;
-  
   // Determine Pools status
   const unpooled = s.totalTeams - s.teamsInPool;
 
@@ -141,9 +136,9 @@ const navItems = computed<NavItem[]>(() => {
       desc: 'Upload CSV or add/remove teams manually.',
       icon: 'pi-upload',
       badge: hasTournament
-        ? (s.totalTeams > 0 ? (namesMissing > 0 ? `${namesMissing} unnamed` : 'Ready') : undefined)
+        ? (s.totalTeams > 0 ? 'Ready' : undefined)
         : undefined,
-      badgeSeverity: namesMissing > 0 ? 'warn' : 'success'
+      badgeSeverity: 'success'
     }),
     needsTournament({
       to: { name: 'admin-pools-seeds' },
@@ -158,7 +153,7 @@ const navItems = computed<NavItem[]>(() => {
     needsTournament({
       to: { name: 'admin-schedule-templates' },
       title: 'Schedule Templates',
-      desc: 'Define templates for 4–5 team pools.',
+      desc: 'Define templates for 3–6 team pools.',
       icon: 'pi-table',
     }),
     needsTournament({

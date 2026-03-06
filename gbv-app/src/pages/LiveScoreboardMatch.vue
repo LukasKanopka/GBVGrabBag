@@ -37,6 +37,8 @@ const from = computed(() => (route.query.from as string | undefined) ?? undefine
 
 const liveMatchId = ref<string | null>(null);
 const poolId = ref<string | null>(null);
+const poolSize = ref<number | null>(null);
+const poolSizeCache = new Map<string, number>();
 const team1Id = ref<string | null>(null);
 const team2Id = ref<string | null>(null);
 const score1 = ref<number>(0);
@@ -59,6 +61,54 @@ const INACTIVITY_PAUSE_MS = 4 * 60 * 1000;
 
 // team names cache
 const teamNameById = ref<Record<string, string>>({});
+
+async function resolvePoolSize(poolIdValue: string): Promise<number | null> {
+  if (poolSizeCache.has(poolIdValue)) return poolSizeCache.get(poolIdValue)!;
+
+  // Primary: pools.target_size
+  {
+    const { data, error } = await supabase
+      .from('pools')
+      .select('id,target_size')
+      .eq('id', poolIdValue)
+      .maybeSingle();
+    if (!error && data) {
+      const sz = Number((data as any).target_size);
+      if (Number.isFinite(sz) && sz > 0) {
+        poolSizeCache.set(poolIdValue, sz);
+        return sz;
+      }
+    }
+  }
+
+  // Fallback: count assigned teams in that pool for this tournament
+  if (session.tournament) {
+    const { count } = await supabase
+      .from('teams')
+      .select('id', { count: 'exact', head: true })
+      .eq('tournament_id', session.tournament.id)
+      .eq('pool_id', poolIdValue);
+    const sz = Number(count ?? 0);
+    if (Number.isFinite(sz) && sz > 0) {
+      poolSizeCache.set(poolIdValue, sz);
+      return sz;
+    }
+  }
+
+  return null;
+}
+
+watch(
+  () => [poolId.value, session.tournament?.id] as const,
+  async ([pid]) => {
+    if (!pid) {
+      poolSize.value = null;
+      return;
+    }
+    poolSize.value = await resolvePoolSize(pid);
+  },
+  { immediate: true }
+);
 
 async function ensureTournament() {
   if (!accessCode.value) return;
@@ -264,6 +314,9 @@ type RuleSet = { target: number; cap?: number | null; winBy2: boolean };
 function getActiveRuleSet(): RuleSet {
   const gr = session.tournament?.game_rules;
   const mt = matchType.value ?? 'pool';
+  if (mt === 'pool' && poolSize.value === 3) {
+    return { target: 28, cap: null, winBy2: true };
+  }
   const phase = mt === 'bracket' ? gr?.bracket : gr?.pool;
   const target = phase?.setTarget ?? 21;
   const cap = phase?.cap ?? 25;

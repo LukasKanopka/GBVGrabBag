@@ -17,7 +17,7 @@ type TeamSeed = {
   id: string;
   pool_id: string | null;
   seed_in_pool: number | null;
-  seeded_player_name: string;
+  full_team_name: string;
 };
 
 const route = useRoute();
@@ -81,7 +81,7 @@ async function loadSeededPlayersForPools() {
 
   const { data, error } = await supabase
     .from('teams')
-    .select('id,pool_id,seed_in_pool,seeded_player_name')
+    .select('id,pool_id,seed_in_pool,full_team_name')
     .eq('tournament_id', session.tournament.id)
     .in('pool_id', poolIds)
     .order('seed_in_pool', { ascending: true });
@@ -102,7 +102,7 @@ async function loadSeededPlayersForPools() {
   for (const [pid, arr] of Object.entries(byPool)) {
     arr.sort((a, b) => (a.seed_in_pool ?? 9999) - (b.seed_in_pool ?? 9999));
     const names = arr
-      .map((t) => firstNameFromFullName(t.seeded_player_name))
+      .map((t) => firstNameFromFullName(t.full_team_name))
       .filter(Boolean);
     res[pid] = names;
   }
