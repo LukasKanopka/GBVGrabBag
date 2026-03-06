@@ -32,6 +32,8 @@ export interface GameRules {
     cap?: number;        // e.g., 25
     bestOf?: number;     // e.g., 1 = single set
     winBy2?: boolean;    // e.g., true = must win by 2
+    // Optional per-pool-size overrides (JSON keys are strings)
+    setTargetByPoolSize?: Record<string, number>;
   };
   bracket?: {
     setTarget?: number;

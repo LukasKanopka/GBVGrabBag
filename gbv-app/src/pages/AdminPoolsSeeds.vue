@@ -9,7 +9,7 @@ import supabase from '../lib/supabase';
 import { useSessionStore } from '../stores/session';
 import UiSectionHeading from '@/components/ui/UiSectionHeading.vue';
 import UiAccordion from '@/components/ui/UiAccordion.vue';
-import { csvToObjects, objectsToCsv, normalizeCell } from '../lib/csv';
+import { parseCsv, normalizeHeader, objectsToCsv, normalizeCell } from '../lib/csv';
 
 type Pool = {
   id: string;
@@ -49,6 +49,8 @@ const poolImportRows = ref<PoolImportRow[]>([]);
 const poolImportErrors = ref<string[]>([]);
 const poolImportWarnings = ref<string[]>([]);
 const poolImportSummary = ref<{ pools: number; rows: number; missingTeams: number }>({ pools: 0, rows: 0, missingTeams: 0 });
+const poolImportTeamOrder = ref<string[]>([]);
+const poolImportPoolOrder = ref<string[]>([]);
 
 function downloadCsv(filename: string, csvText: string) {
   const blob = new Blob([csvText], { type: 'text/csv;charset=utf-8' });
@@ -207,29 +209,9 @@ function normalizeKey(v: string): string {
   return normalizeCell(v).toLowerCase();
 }
 
-function buildTeamNameIndex(): { map: Map<string, Team>; duplicates: string[] } {
-  const map = new Map<string, Team>();
-  const dupes: string[] = [];
-  for (const t of teams.value) {
-    const name = normalizeCell(t.full_team_name || '');
-    if (!name) continue;
-    const key = normalizeKey(name);
-    if (map.has(key)) {
-      dupes.push(name);
-      continue;
-    }
-    map.set(key, t);
-  }
-  return { map, duplicates: dupes };
-}
-
 function downloadPoolsTemplateCsv() {
   if (!session.tournament) {
     toast.add({ severity: 'warn', summary: 'Load a tournament first', life: 2000 });
-    return;
-  }
-  if (teams.value.length === 0) {
-    toast.add({ severity: 'warn', summary: 'No teams found', detail: 'Import teams first.', life: 2500 });
     return;
   }
 
@@ -243,14 +225,32 @@ function downloadPoolsTemplateCsv() {
     return (a.full_team_name || '').localeCompare((b.full_team_name || ''));
   });
 
-  const rows = ordered.map((t) => ({
-    team_name: normalizeCell(t.full_team_name),
-    pool_name: '',
-    seed_in_pool: '',
-    court_assignment: '',
-  }));
+  const poolColumns = ['pool1', 'pool2', 'pool3', 'pool4'];
+  const rows: Array<Record<string, unknown>> = [];
 
-  const csv = objectsToCsv(rows, ['team_name', 'pool_name', 'seed_in_pool', 'court_assignment']);
+  if (ordered.length === 0) {
+    // If no teams exist yet, include a single example row so the format is obvious in Google Sheets.
+    rows.push({
+      pool1: 'Lukas/Alex',
+      pool2: 'Maria/Alexis',
+      pool3: 'Elly/Emory',
+      pool4: 'Ryan/Cole',
+    });
+  } else {
+    // Layout: row 1 = seed 1 for each pool, row 2 = seed 2, etc.
+    const perRow = poolColumns.length;
+    const totalRows = Math.ceil(ordered.length / perRow);
+    for (let r = 0; r < totalRows; r++) {
+      const rec: Record<string, unknown> = {};
+      for (let c = 0; c < perRow; c++) {
+        const team = ordered[r * perRow + c];
+        rec[poolColumns[c]!] = team ? normalizeCell(team.full_team_name) : '';
+      }
+      rows.push(rec);
+    }
+  }
+
+  const csv = objectsToCsv(rows, poolColumns);
   const code = (session.accessCode || 'tournament').toLowerCase();
   downloadCsv(`pools_template_${code}.csv`, csv);
 }
@@ -259,22 +259,9 @@ function resetPoolCsvInput() {
   if (poolCsvInput.value) poolCsvInput.value.value = '';
 }
 
-function getAny(rec: Record<string, string>, keys: string[]): string {
-  for (const k of keys) {
-    const v = rec[k];
-    if (v != null && String(v).trim() !== '') return String(v);
-  }
-  return '';
-}
-
-function validatePoolImport(rowsRaw: Array<Record<string, string>>): { ok: boolean; rows: PoolImportRow[]; errors: string[]; warnings: string[] } {
+function validatePoolImportLong(rowsRaw: Array<Record<string, string>>): { ok: boolean; rows: PoolImportRow[]; errors: string[]; warnings: string[] } {
   const errors: string[] = [];
   const warnings: string[] = [];
-
-  const { map: teamByName, duplicates: dupesInDb } = buildTeamNameIndex();
-  if (dupesInDb.length > 0) {
-    errors.push('Duplicate team names exist in the database. Resolve duplicates before importing pools.');
-  }
 
   const requiredKeysPresent = (candidates: string[]) => rowsRaw.length === 0 ? false : candidates.some((k) => Object.prototype.hasOwnProperty.call(rowsRaw[0], k));
   if (!requiredKeysPresent(['team_name', 'full_team_name', 'team'])) {
@@ -297,10 +284,13 @@ function validatePoolImport(rowsRaw: Array<Record<string, string>>): { ok: boole
   for (let i = 0; i < rowsRaw.length; i++) {
     const rec = rowsRaw[i];
     const rowNo = i + 2; // header is row 1
-    const teamName = normalizeCell(getAny(rec, ['team_name', 'full_team_name', 'team']));
-    const poolName = normalizeCell(getAny(rec, ['pool_name', 'pool']));
-    const seedStr = normalizeCell(getAny(rec, ['seed_in_pool', 'seed']));
-    const court = normalizeCell(getAny(rec, ['court_assignment', 'court']));
+    const teamName = normalizeCell(String(rec.team_name ?? rec.full_team_name ?? rec.team ?? ''));
+    const poolName = normalizeCell(String(rec.pool_name ?? rec.pool ?? ''));
+    const seedStr = normalizeCell(String(rec.seed_in_pool ?? rec.seed ?? ''));
+    const court = normalizeCell(String(rec.court_assignment ?? rec.court ?? ''));
+
+    // Ignore fully blank lines (common from Google Sheets exports)
+    if (!teamName && !poolName && !seedStr && !court) continue;
 
     if (!teamName) errors.push(`Row ${rowNo}: missing team_name`);
     if (!poolName) errors.push(`Row ${rowNo}: missing pool_name`);
@@ -313,7 +303,6 @@ function validatePoolImport(rowsRaw: Array<Record<string, string>>): { ok: boole
     if (teamName) {
       if (seenTeams.has(teamKey)) errors.push(`Row ${rowNo}: duplicate team_name '${teamName}' in file`);
       seenTeams.add(teamKey);
-      if (!teamByName.has(teamKey)) errors.push(`Row ${rowNo}: team_name '${teamName}' not found in tournament`);
     }
 
     const poolKey = normalizeKey(poolName);
@@ -362,6 +351,92 @@ function validatePoolImport(rowsRaw: Array<Record<string, string>>): { ok: boole
   return { ok: errors.length === 0, rows: parsed, errors, warnings };
 }
 
+function validatePoolImportWide(parsed: { pools: Array<{ pool_name: string; team_names: string[] }> }): { ok: boolean; rows: PoolImportRow[]; errors: string[]; warnings: string[] } {
+  const errors: string[] = [];
+  const warnings: string[] = [];
+
+  const out: PoolImportRow[] = [];
+  const seenTeams = new Set<string>();
+
+  for (const p of parsed.pools) {
+    const poolName = normalizeCell(p.pool_name);
+    if (!poolName) continue;
+    const teamNames = p.team_names.map((x) => normalizeCell(x)).filter(Boolean);
+    if (teamNames.length === 0) continue;
+
+    for (let i = 0; i < teamNames.length; i++) {
+      const teamName = teamNames[i]!;
+      const seed = i + 1;
+      const teamKey = normalizeKey(teamName);
+
+      if (seenTeams.has(teamKey)) {
+        errors.push(`Duplicate team_name '${teamName}' found in multiple pools.`);
+      }
+      seenTeams.add(teamKey);
+
+      out.push({
+        team_name: teamName,
+        pool_name: poolName,
+        seed_in_pool: seed,
+        court_assignment: null,
+      });
+    }
+  }
+
+  if (out.length === 0) errors.push('No team assignments found. Fill team names under pool columns (e.g. pool1, pool2, ...).');
+  return { ok: errors.length === 0, rows: out, errors, warnings };
+}
+
+function canonicalPoolNameFromHeaderNorm(headerNorm: string, fallback: string): string {
+  const m = headerNorm.match(/^pool_?(\d+)$/);
+  if (m && m[1]) return `Pool ${Number(m[1])}`;
+  return fallback || headerNorm || 'Pool';
+}
+
+function parsePoolsCsvWide(text: string): { pools: Array<{ pool_name: string; team_names: string[] }>; poolOrder: string[]; teamOrder: string[] } {
+  const rows = parseCsv(text);
+  if (rows.length === 0) return { pools: [], poolOrder: [], teamOrder: [] };
+  const headerRaw = (rows[0] || []).map((h) => normalizeCell(h));
+  const headerNorm = headerRaw.map((h) => normalizeHeader(h));
+
+  const poolCols: Array<{ idx: number; name: string }> = [];
+  for (let i = 0; i < headerNorm.length; i++) {
+    const n = headerNorm[i] || '';
+    // Accept "pool1" or "pool_1" (e.g. "Pool 1" in Sheets)
+    if (/^pool_?\d+$/.test(n)) {
+      const fallback = headerRaw[i] || `Pool ${i + 1}`;
+      poolCols.push({ idx: i, name: canonicalPoolNameFromHeaderNorm(n, fallback) });
+    }
+  }
+
+  const pools: Array<{ pool_name: string; team_names: string[] }> = poolCols.map((c) => ({ pool_name: c.name, team_names: [] }));
+  for (const row of rows.slice(1)) {
+    for (let j = 0; j < poolCols.length; j++) {
+      const col = poolCols[j]!;
+      const cell = normalizeCell(row[col.idx] ?? '');
+      if (!cell) continue;
+      pools[j]!.team_names.push(cell);
+    }
+  }
+
+  const poolOrder = pools.map((p) => p.pool_name);
+  const maxLen = Math.max(0, ...pools.map((p) => p.team_names.length));
+  const teamOrder: string[] = [];
+  const seen = new Set<string>();
+  for (let i = 0; i < maxLen; i++) {
+    for (const p of pools) {
+      const name = normalizeCell(p.team_names[i] ?? '');
+      if (!name) continue;
+      const key = normalizeKey(name);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      teamOrder.push(name);
+    }
+  }
+
+  return { pools, poolOrder, teamOrder };
+}
+
 async function handlePoolsCsvChange(e: Event) {
   const input = e.target as HTMLInputElement;
   const file = input.files?.[0];
@@ -369,8 +444,8 @@ async function handlePoolsCsvChange(e: Event) {
 
   try {
     const text = await file.text();
-    const objs = csvToObjects(text);
-    if (objs.length === 0) {
+    const rows = parseCsv(text);
+    if (rows.length === 0) {
       poolImportRows.value = [];
       poolImportErrors.value = ['CSV appears to be empty.'];
       poolImportWarnings.value = [];
@@ -378,26 +453,75 @@ async function handlePoolsCsvChange(e: Event) {
       return;
     }
 
-    const validated = validatePoolImport(objs);
+    const headerRaw = (rows[0] || []).map((h) => normalizeCell(h));
+    const headerNorm = headerRaw.map((h) => normalizeHeader(h));
+    const poolColCount = headerNorm.filter((h) => /^pool_?\d+$/.test(h || '')).length;
+    if (rows.length <= 1) {
+      poolImportRows.value = [];
+      poolImportErrors.value = [
+        poolColCount > 0
+          ? 'No team assignments found. Fill team names under pool columns (e.g. pool1, pool2, pool3, pool4).'
+          : 'CSV appears to be empty.',
+      ];
+      poolImportWarnings.value = [];
+      poolImportSummary.value = { pools: 0, rows: 0, missingTeams: 0 };
+      return;
+    }
+    const isLong = headerNorm.includes('team_name') && headerNorm.includes('pool_name') && headerNorm.includes('seed_in_pool');
+
+    let validated: { ok: boolean; rows: PoolImportRow[]; errors: string[]; warnings: string[] };
+    let teamOrder: string[] = [];
+    let poolOrder: string[] = [];
+    if (isLong) {
+      // Build objects using normalized headers (keeps existing behavior)
+      const objs: Array<Record<string, string>> = [];
+      for (const r of rows.slice(1)) {
+        const rec: Record<string, string> = {};
+        for (let i = 0; i < headerNorm.length; i++) {
+          const key = headerNorm[i] || `col_${i + 1}`;
+          rec[key] = normalizeCell(r[i] ?? '');
+        }
+        objs.push(rec);
+      }
+      validated = validatePoolImportLong(objs);
+      // Team order: appearance order in file (top-to-bottom)
+      const seen = new Set<string>();
+      for (const o of objs) {
+        const teamName = normalizeCell(String(o.team_name ?? o.full_team_name ?? o.team ?? ''));
+        if (!teamName) continue;
+        const key = normalizeKey(teamName);
+        if (seen.has(key)) continue;
+        seen.add(key);
+        teamOrder.push(teamName);
+      }
+      // Pool order: first-seen order in file
+      const seenPools = new Set<string>();
+      for (const o of objs) {
+        const poolName = normalizeCell(String(o.pool_name ?? o.pool ?? ''));
+        if (!poolName) continue;
+        const key = normalizeKey(poolName);
+        if (seenPools.has(key)) continue;
+        seenPools.add(key);
+        poolOrder.push(poolName);
+      }
+    } else {
+      const wide = parsePoolsCsvWide(text);
+      validated = validatePoolImportWide(wide);
+      teamOrder = wide.teamOrder;
+      poolOrder = wide.poolOrder;
+    }
+
     poolImportRows.value = validated.rows;
     poolImportErrors.value = validated.errors;
     poolImportWarnings.value = validated.warnings;
+    poolImportTeamOrder.value = teamOrder;
+    poolImportPoolOrder.value = poolOrder;
 
     const poolKeys = new Set(validated.rows.map((r) => normalizeKey(r.pool_name)).filter(Boolean));
-    const teamKeysInFile = new Set(validated.rows.map((r) => normalizeKey(r.team_name)).filter(Boolean));
-    const teamKeysInDb = new Set(teams.value.map((t) => normalizeKey(t.full_team_name || '')).filter(Boolean));
-    let missingTeams = 0;
-    for (const k of teamKeysInDb) {
-      if (!teamKeysInFile.has(k)) missingTeams++;
-    }
-
-    poolImportSummary.value = { pools: poolKeys.size, rows: validated.rows.length, missingTeams };
+    poolImportSummary.value = { pools: poolKeys.size, rows: validated.rows.length, missingTeams: 0 };
 
     if (validated.ok) {
       toast.add({ severity: 'success', summary: 'CSV parsed', detail: `${validated.rows.length} row(s)`, life: 1500 });
-      if (missingTeams > 0) {
-        poolImportWarnings.value = poolImportWarnings.value.concat([`${missingTeams} team(s) are not included in the CSV and will remain unassigned after import.`]);
-      }
     } else {
       toast.add({ severity: 'error', summary: 'CSV has issues', detail: `${validated.errors.length} error(s)`, life: 3500 });
     }
@@ -406,6 +530,8 @@ async function handlePoolsCsvChange(e: Event) {
     poolImportErrors.value = [err?.message ?? 'Failed to parse CSV'];
     poolImportWarnings.value = [];
     poolImportSummary.value = { pools: 0, rows: 0, missingTeams: 0 };
+    poolImportTeamOrder.value = [];
+    poolImportPoolOrder.value = [];
     toast.add({ severity: 'error', summary: 'Parse failed', detail: err?.message ?? 'Unknown error', life: 3000 });
   } finally {
     resetPoolCsvInput();
@@ -427,7 +553,7 @@ async function applyPoolsImport() {
   }
 
   const ok = confirm(
-    'Import pools from CSV?\n\nThis will:\n- Delete ALL existing pool matches\n- Delete ALL existing pools\n- Clear ALL team pool assignments/seeds\n- Recreate pools and assignments from the CSV\n\nContinue?'
+    'Import pools from CSV?\n\nThis will:\n- Delete ALL matches (pool + bracket)\n- Delete ALL pools\n- Delete ALL teams\n- Recreate teams, pools, and seeds from the CSV\n\nContinue?'
   );
   if (!ok) return;
 
@@ -435,14 +561,13 @@ async function applyPoolsImport() {
   try {
     const tournamentId = session.tournament.id;
 
-    // 1) Delete existing pool matches
+    // 1) Delete all existing matches (pool + bracket)
     {
       const { error } = await supabase
         .from('matches')
         .delete()
         .eq('tournament_id', tournamentId)
-        .eq('match_type', 'pool');
-      if (error) throw new Error(`Failed to delete pool matches: ${error.message}`);
+      if (error) throw new Error(`Failed to delete matches: ${error.message}`);
     }
 
     // 2) Delete existing pools (teams unassigned via FK)
@@ -454,17 +579,14 @@ async function applyPoolsImport() {
       if (error) throw new Error(`Failed to delete pools: ${error.message}`);
     }
 
-    // 3) Clear team assignments
+    // 3) Delete all existing teams (teams are created from the CSV)
     {
       const { error } = await supabase
         .from('teams')
-        .update({ pool_id: null, seed_in_pool: null })
+        .delete()
         .eq('tournament_id', tournamentId);
-      if (error) throw new Error(`Failed to reset team assignments: ${error.message}`);
+      if (error) throw new Error(`Failed to delete teams: ${error.message}`);
     }
-
-    // Build team index
-    const { map: teamByName } = buildTeamNameIndex();
 
     // 4) Create pools
     const poolMeta = new Map<string, { name: string; court: string | null; size: number }>();
@@ -479,12 +601,24 @@ async function applyPoolsImport() {
       }
     }
 
-    const poolPayload = Array.from(poolMeta.values()).map((p) => ({
-      tournament_id: tournamentId,
-      name: p.name,
-      court_assignment: p.court,
-      target_size: p.size,
-    }));
+    const poolOrderKeys = poolImportPoolOrder.value.map((p) => normalizeKey(p));
+    const poolPayload = Array.from(poolMeta.entries())
+      .sort((a, b) => {
+        const ia = poolOrderKeys.indexOf(a[0]);
+        const ib = poolOrderKeys.indexOf(b[0]);
+        if (ia !== -1 || ib !== -1) {
+          if (ia === -1) return 1;
+          if (ib === -1) return -1;
+          return ia - ib;
+        }
+        return a[1].name.localeCompare(b[1].name);
+      })
+      .map(([, p]) => ({
+        tournament_id: tournamentId,
+        name: p.name,
+        court_assignment: p.court,
+        target_size: p.size,
+      }));
 
     const { data: createdPools, error: insPErr } = await supabase
       .from('pools')
@@ -499,24 +633,42 @@ async function applyPoolsImport() {
       poolIdByKey.set(normalizeKey(name), String(p.id));
     }
 
-    // 5) Assign teams in bulk by primary key upsert
-    const updates = poolImportRows.value.map((r) => {
-      const team = teamByName.get(normalizeKey(r.team_name));
+    // 5) Create teams with pool assignments (avoid upsert: teams has NOT NULL columns)
+    const assignmentByTeamKey = new Map<string, { pool_id: string; seed_in_pool: number }>();
+    for (const r of poolImportRows.value) {
       const pid = poolIdByKey.get(normalizeKey(r.pool_name));
-      if (!team || !pid) return null;
-      return { id: team.id, pool_id: pid, seed_in_pool: r.seed_in_pool };
-    }).filter(Boolean) as Array<{ id: string; pool_id: string; seed_in_pool: number }>;
+      if (!pid) throw new Error(`Pool not found after creation: '${r.pool_name}'`);
+      assignmentByTeamKey.set(normalizeKey(r.team_name), { pool_id: pid, seed_in_pool: r.seed_in_pool });
+    }
 
-    const { error: upErr } = await supabase
+    const order = poolImportTeamOrder.value.length ? poolImportTeamOrder.value : Array.from(new Set(poolImportRows.value.map((r) => r.team_name)));
+    const teamPayload = order
+      .map((name, idx) => {
+        const clean = normalizeCell(name);
+        const assignment = assignmentByTeamKey.get(normalizeKey(clean));
+        return {
+          tournament_id: tournamentId,
+          seeded_player_name: clean,
+          full_team_name: clean,
+          seed_global: idx + 1,
+          pool_id: assignment?.pool_id ?? null,
+          seed_in_pool: assignment?.seed_in_pool ?? null,
+        };
+      })
+      .filter((t) => t.full_team_name.trim().length > 0);
+
+    const { error: teamErr } = await supabase
       .from('teams')
-      .upsert(updates, { onConflict: 'id' });
-    if (upErr) throw new Error(`Failed to assign teams: ${upErr.message}`);
+      .insert(teamPayload);
+    if (teamErr) throw new Error(`Failed to create teams: ${teamErr.message}`);
 
     await Promise.all([loadPools(), loadTeams()]);
     poolImportRows.value = [];
     poolImportErrors.value = [];
     poolImportWarnings.value = [];
     poolImportSummary.value = { pools: 0, rows: 0, missingTeams: 0 };
+    poolImportTeamOrder.value = [];
+    poolImportPoolOrder.value = [];
     toast.add({ severity: 'success', summary: 'Pools imported', detail: `Created ${poolPayload.length} pool(s)`, life: 2500 });
   } catch (err: any) {
     toast.add({ severity: 'error', summary: 'Import failed', detail: err?.message ?? 'Unknown error', life: 4000 });
@@ -956,7 +1108,7 @@ async function hasExistingPoolMatches(tournamentId: string): Promise<boolean> {
         <div class="text-sm">
           <div class="font-semibold">Import Pools (Google Sheets CSV)</div>
           <div class="mt-1 text-white/80">
-            Download the template CSV, import it into Google Sheets, fill <span class="font-mono">pool_name</span> / <span class="font-mono">seed_in_pool</span> (optional <span class="font-mono">court_assignment</span>), then export CSV and upload here.
+            Download the template CSV, import it into Google Sheets, then enter team names under <span class="font-mono">pool1</span>, <span class="font-mono">pool2</span>, <span class="font-mono">pool3</span>, <span class="font-mono">pool4</span>. Order in each column determines the seed within that pool. Uploading this CSV will create the teams automatically.
           </div>
           <div class="mt-2 text-xs text-white/70">
             Google Sheets: File → Import (CSV) • then File → Download → Comma-separated values (.csv)
@@ -964,7 +1116,7 @@ async function hasExistingPoolMatches(tournamentId: string): Promise<boolean> {
         </div>
         <div class="flex items-center gap-2">
           <Button
-            label="Download Template CSV"
+            label="Download Pools Template CSV"
             icon="pi pi-download"
             class="!rounded-xl border-none text-white gbv-grad-blue"
             @click="downloadPoolsTemplateCsv"
@@ -984,7 +1136,6 @@ async function hasExistingPoolMatches(tournamentId: string): Promise<boolean> {
           />
           <div v-if="poolImportSummary.rows > 0" class="mt-2 text-xs text-white/80">
             Parsed: {{ poolImportSummary.rows }} row(s), {{ poolImportSummary.pools }} pool(s)
-            <span v-if="poolImportSummary.missingTeams > 0"> • Missing teams: {{ poolImportSummary.missingTeams }}</span>
           </div>
         </div>
 

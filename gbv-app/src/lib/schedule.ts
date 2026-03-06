@@ -127,7 +127,7 @@ export async function checkPrerequisites(tournamentId: string): Promise<{ ok: bo
   for (const sz of sizesNeeded.filter((s) => allowedSizes.has(s))) {
     const { data: tmpl, error: tmplErr } = await supabase
       .from('schedule_templates')
-      .select('id')
+      .select('id,template_data')
       .eq('tournament_id', tournamentId)
       .eq('pool_size', sz)
       .maybeSingle();
@@ -151,6 +151,34 @@ export async function checkPrerequisites(tournamentId: string): Promise<{ ok: bo
         }
       } else {
         errors.push(`Missing schedule template for pool size ${sz}.`);
+      }
+    } else if (sz === 3) {
+      // Legacy migration: older default was a 3-match single RR for 3-team pools.
+      // New default is double RR (6 matches). Only auto-upgrade if the template matches the legacy default exactly.
+      const td = (tmpl as any).template_data as unknown;
+      const isLegacySingleRR =
+        Array.isArray(td) &&
+        td.length === 3 &&
+        td[0]?.round === 1 &&
+        Array.isArray(td[0]?.play) &&
+        JSON.stringify(td[0].play) === JSON.stringify([[1, 2]]) &&
+        JSON.stringify(td[0]?.ref) === JSON.stringify([3]) &&
+        td[1]?.round === 2 &&
+        JSON.stringify(td[1]?.play) === JSON.stringify([[2, 3]]) &&
+        JSON.stringify(td[1]?.ref) === JSON.stringify([1]) &&
+        td[2]?.round === 3 &&
+        JSON.stringify(td[2]?.play) === JSON.stringify([[1, 3]]) &&
+        JSON.stringify(td[2]?.ref) === JSON.stringify([2]);
+
+      if (isLegacySingleRR) {
+        const defaults = defaultTemplateForPoolSize(3);
+        const { error: upErr } = await supabase
+          .from('schedule_templates')
+          .update({ template_data: defaults })
+          .eq('id', (tmpl as any).id);
+        if (upErr) {
+          errors.push(`Failed to upgrade legacy 3-team schedule template: ${upErr.message}`);
+        }
       }
     }
   }

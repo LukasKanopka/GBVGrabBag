@@ -55,8 +55,14 @@ const DEFAULT_ADV_RULES: AdvancementRules = {
 };
 
 const DEFAULT_GAME_RULES: GameRules = {
-  pool: { setTarget: 21, cap: 25, bestOf: 1, winBy2: true },
-  bracket: { setTarget: 21, cap: 25, bestOf: 1, winBy2: true, thirdSetTarget: 15 },
+  pool: {
+    setTarget: 21,
+    cap: 99,
+    bestOf: 1,
+    winBy2: true,
+    setTargetByPoolSize: { '3': 21, '4': 21, '5': 21, '6': 21 },
+  },
+  bracket: { setTarget: 21, cap: 99, bestOf: 1, winBy2: true, thirdSetTarget: 15 },
 };
 
 const form = ref<EditableTournament>({
@@ -115,12 +121,24 @@ function normalizeAdvancementRules(r: AdvancementRules | null | undefined): Adva
 function normalizeGameRules(r: GameRules | null | undefined): GameRules {
   const base = structuredClone(DEFAULT_GAME_RULES);
   if (!r) return base;
+  const poolOverridesRaw = (r.pool as any)?.setTargetByPoolSize;
+  const poolOverrides =
+    poolOverridesRaw && typeof poolOverridesRaw === 'object' && !Array.isArray(poolOverridesRaw)
+      ? poolOverridesRaw as Record<string, any>
+      : {};
+  const baseOverrides = (base.pool as any)?.setTargetByPoolSize || {};
+  const mergedOverrides: Record<string, number> = { ...baseOverrides };
+  for (const [k, v] of Object.entries(poolOverrides)) {
+    const n = Number(v);
+    if (Number.isFinite(n) && n > 0) mergedOverrides[String(k)] = n;
+  }
   return {
     pool: {
       setTarget: r.pool?.setTarget ?? base.pool!.setTarget,
       cap: r.pool?.cap ?? base.pool!.cap,
       bestOf: r.pool?.bestOf ?? base.pool!.bestOf,
       winBy2: r.pool?.winBy2 ?? base.pool!.winBy2,
+      setTargetByPoolSize: mergedOverrides,
     },
     bracket: {
       setTarget: r.bracket?.setTarget ?? base.bracket!.setTarget,
@@ -166,11 +184,14 @@ type Tiebreaker = 'head_to_head' | 'set_ratio' | 'point_diff' | 'random';
 function formatTb(tb: Tiebreaker): string { return String(tb).replace(/_/g, ' '); }
 
 function ensurePoolsConfig(rules: AdvancementRules) {
-  const sizes = [4, 5];
+  const sizes = [3, 4, 5, 6];
   if (!Array.isArray(rules.pools)) rules.pools = [];
   for (const s of sizes) {
     const existing = rules.pools!.find((p) => p.fromPoolSize === s);
-    if (!existing) rules.pools!.push({ fromPoolSize: s, advanceCount: s === 5 ? 2 : 2 });
+    if (!existing) {
+      const defaults: Record<number, number> = { 3: 2, 4: 2, 5: 2, 6: 3 };
+      rules.pools!.push({ fromPoolSize: s, advanceCount: defaults[s] ?? Math.min(2, s) });
+    }
   }
   // sort by size asc
   rules.pools!.sort((a, b) => a.fromPoolSize - b.fromPoolSize);
@@ -245,6 +266,16 @@ function validateForm() {
         throw new Error(`Game rules (${ph}) require ${k}`);
       }
     });
+    if (ph === 'pool') {
+      const m = r.setTargetByPoolSize;
+      if (m != null) {
+        if (typeof m !== 'object' || Array.isArray(m)) throw new Error('Game rules (pool) setTargetByPoolSize must be an object');
+        for (const [k, v] of Object.entries(m)) {
+          const n = Number(v);
+          if (!Number.isFinite(n) || n <= 0) throw new Error(`Game rules (pool) setTargetByPoolSize[${k}] must be a positive number`);
+        }
+      }
+    }
     if (ph === 'bracket' && r.bestOf === 3) {
       if (r.thirdSetTarget == null || Number(r.thirdSetTarget) <= 0) {
         throw new Error('Game rules (bracket) require thirdSetTarget when bestOf = 3');
@@ -448,6 +479,16 @@ onMounted(async () => {
                 <div class="text-sm font-medium">Advancers per Pool Size</div>
                 <div class="mt-2 grid grid-cols-1 gap-3">
                   <div class="flex items-center justify-between gap-3">
+                    <div class="text-sm text-white/80">3 teams</div>
+                    <Dropdown
+                      :options="[0,1,2,3]"
+                      :modelValue="getAdvanceCount(3)"
+                      @update:modelValue="(v:any) => setAdvanceCount(3, v)"
+                      class="!rounded-xl w-32"
+                      :pt="{ input: { class: '!py-2 !px-3 !text-sm !rounded-xl' } }"
+                    />
+                  </div>
+                  <div class="flex items-center justify-between gap-3">
                     <div class="text-sm text-white/80">4 teams</div>
                     <Dropdown
                       :options="[0,1,2,3,4]"
@@ -463,6 +504,16 @@ onMounted(async () => {
                       :options="[0,1,2,3,4,5]"
                       :modelValue="getAdvanceCount(5)"
                       @update:modelValue="(v:any) => setAdvanceCount(5, v)"
+                      class="!rounded-xl w-32"
+                      :pt="{ input: { class: '!py-2 !px-3 !text-sm !rounded-xl' } }"
+                    />
+                  </div>
+                  <div class="flex items-center justify-between gap-3">
+                    <div class="text-sm text-white/80">6 teams</div>
+                    <Dropdown
+                      :options="[0,1,2,3,4,5,6]"
+                      :modelValue="getAdvanceCount(6)"
+                      @update:modelValue="(v:any) => setAdvanceCount(6, v)"
                       class="!rounded-xl w-32"
                       :pt="{ input: { class: '!py-2 !px-3 !text-sm !rounded-xl' } }"
                     />
@@ -533,6 +584,30 @@ onMounted(async () => {
                   <div>
                     <label class="block text-xs text-white/80 mb-1">Cap</label>
                     <InputNumber v-model="form.game_rules.pool!.cap" :min="1" class="w-full" :pt="{ input: { class: '!w-full !py-2 !px-3 !rounded-xl' } }" />
+                  </div>
+                  <div class="col-span-2 rounded-lg border border-white/15 bg-white/5 p-3">
+                    <div class="text-xs font-semibold text-white/90">Set Target by Pool Size</div>
+                    <div class="mt-2 grid grid-cols-2 gap-3">
+                      <div>
+                        <label class="block text-xs text-white/80 mb-1">3 teams</label>
+                        <InputNumber v-model="form.game_rules.pool!.setTargetByPoolSize!['3']" :min="1" class="w-full" :pt="{ input: { class: '!w-full !py-2 !px-3 !rounded-xl' } }" />
+                      </div>
+                      <div>
+                        <label class="block text-xs text-white/80 mb-1">4 teams</label>
+                        <InputNumber v-model="form.game_rules.pool!.setTargetByPoolSize!['4']" :min="1" class="w-full" :pt="{ input: { class: '!w-full !py-2 !px-3 !rounded-xl' } }" />
+                      </div>
+                      <div>
+                        <label class="block text-xs text-white/80 mb-1">5 teams</label>
+                        <InputNumber v-model="form.game_rules.pool!.setTargetByPoolSize!['5']" :min="1" class="w-full" :pt="{ input: { class: '!w-full !py-2 !px-3 !rounded-xl' } }" />
+                      </div>
+                      <div>
+                        <label class="block text-xs text-white/80 mb-1">6 teams</label>
+                        <InputNumber v-model="form.game_rules.pool!.setTargetByPoolSize!['6']" :min="1" class="w-full" :pt="{ input: { class: '!w-full !py-2 !px-3 !rounded-xl' } }" />
+                      </div>
+                    </div>
+                    <div class="mt-2 text-xs text-white/70">
+                      Overrides the Pool Play Set Target for matches in pools of that size.
+                    </div>
                   </div>
                   <div>
                     <label class="block text-xs text-white/80 mb-1">Best Of</label>

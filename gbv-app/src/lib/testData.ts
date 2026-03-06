@@ -11,8 +11,9 @@ type MatchCandidate = {
 
 type PoolRule = {
   setTarget: number;
-  cap: number | null;
+  cap: number;
   winBy2: boolean;
+  setTargetByPoolSize?: Record<string, number>;
 };
 
 function randInt(min: number, max: number): number {
@@ -74,18 +75,26 @@ async function loadBasePoolRules(tournamentId: string): Promise<PoolRule> {
     .eq('id', tournamentId)
     .single();
   if (error || !data) {
-    return { setTarget: 21, cap: 25, winBy2: true };
+    return { setTarget: 21, cap: 99, winBy2: true, setTargetByPoolSize: { '3': 21, '4': 21, '5': 21, '6': 21 } };
   }
   const t = data as Tournament;
   const pool = (t.game_rules?.pool as any) || {};
   const setTarget = Number(pool.setTarget ?? 21);
-  const cap = pool.cap == null ? 25 : Number(pool.cap);
+  const cap = pool.cap == null ? 99 : Number(pool.cap);
   const winBy2 = Boolean(pool.winBy2 ?? true);
-  return { setTarget, cap, winBy2 };
+  const bySizeRaw = pool.setTargetByPoolSize;
+  const setTargetByPoolSize =
+    bySizeRaw && typeof bySizeRaw === 'object' && !Array.isArray(bySizeRaw)
+      ? bySizeRaw as Record<string, number>
+      : undefined;
+  return { setTarget, cap, winBy2, setTargetByPoolSize };
 }
 
 function rulesForPoolSize(poolSize: number | null, base: PoolRule): PoolRule {
-  if (poolSize === 3) return { setTarget: 28, cap: null, winBy2: true };
+  if (poolSize != null) {
+    const v = Number(base.setTargetByPoolSize?.[String(poolSize)]);
+    if (Number.isFinite(v) && v > 0) return { ...base, setTarget: v };
+  }
   return base;
 }
 
@@ -150,8 +159,7 @@ export async function fillRandomPoolScores(tournamentId: string): Promise<FillRe
     try {
       const sz = m.pool_id ? (poolSizeById.get(String(m.pool_id)) ?? null) : null;
       const rules = rulesForPoolSize(sz, baseRules);
-      const cap = rules.cap == null ? (rules.setTarget + 6) : rules.cap;
-      const [w, l] = generatePlausibleSet(rules.setTarget, cap, rules.winBy2);
+      const [w, l] = generatePlausibleSet(rules.setTarget, rules.cap, rules.winBy2);
       const team1Wins = Math.random() < 0.5;
       const team1_score = team1Wins ? w : l;
       const team2_score = team1Wins ? l : w;

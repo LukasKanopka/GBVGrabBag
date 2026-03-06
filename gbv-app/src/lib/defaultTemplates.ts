@@ -43,15 +43,21 @@ export function defaultTemplateForPoolSize(size: number): ScheduleTemplateRound[
   }
 
   if (size === 3) {
-    // 3 total matches (single round robin)
+    // 6 total matches (double round robin) — each team plays each other twice
     // Round: [Team1 vs Team2] Ref
-    // 1: [1 vs 2] Ref 3
-    // 2: [2 vs 3] Ref 1
-    // 3: [1 vs 3] Ref 2
+    // 1: [1 vs 3] Ref 2
+    // 2: [1 vs 3] Ref 2
+    // 3: [2 vs 3] Ref 1
+    // 4: [2 vs 3] Ref 1
+    // 5: [1 vs 2] Ref 3
+    // 6: [1 vs 2] Ref 3
     return [
-      { round: 1, play: [[1, 2]], ref: [3] },
-      { round: 2, play: [[2, 3]], ref: [1] },
-      { round: 3, play: [[1, 3]], ref: [2] },
+      { round: 1, play: [[1, 3]], ref: [2] },
+      { round: 2, play: [[1, 3]], ref: [2] },
+      { round: 3, play: [[2, 3]], ref: [1] },
+      { round: 4, play: [[2, 3]], ref: [1] },
+      { round: 5, play: [[1, 2]], ref: [3] },
+      { round: 6, play: [[1, 2]], ref: [3] },
     ];
   }
 

@@ -314,12 +314,22 @@ type RuleSet = { target: number; cap?: number | null; winBy2: boolean };
 function getActiveRuleSet(): RuleSet {
   const gr = session.tournament?.game_rules;
   const mt = matchType.value ?? 'pool';
-  if (mt === 'pool' && poolSize.value === 3) {
-    return { target: 28, cap: null, winBy2: true };
-  }
   const phase = mt === 'bracket' ? gr?.bracket : gr?.pool;
-  const target = phase?.setTarget ?? 21;
-  const cap = phase?.cap ?? 25;
+
+  // Cap default now effectively disables most caps (but still provides a safety ceiling)
+  const capDefault = 99;
+
+  let target = phase?.setTarget ?? 21;
+  if (mt === 'pool') {
+    const bySize = (gr?.pool as any)?.setTargetByPoolSize;
+    const sz = poolSize.value;
+    if (sz != null) {
+      const v = Number(bySize?.[String(sz)]);
+      if (Number.isFinite(v) && v > 0) target = v;
+    }
+  }
+
+  const cap = phase?.cap ?? capDefault;
   const winBy2 = phase?.winBy2 ?? true;
   return { target, cap, winBy2 };
 }
