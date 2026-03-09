@@ -2,6 +2,8 @@ import { defineStore } from 'pinia';
 import type { User } from '@supabase/supabase-js';
 import type { Tournament } from '../types/db';
 
+export type TournamentSummary = Pick<Tournament, 'id' | 'name' | 'date' | 'access_code' | 'status'>;
+
 type SessionState = {
   adminUser: User | null;
   accessCode: string | null;
@@ -80,6 +82,18 @@ export const useSessionStore = defineStore('session', {
       }
       this.tournament = data as Tournament;
       return this.tournament;
+    },
+
+    async listTournamentsByDate(date: string): Promise<TournamentSummary[]> {
+      const { default: supabase } = await import('../lib/supabase');
+      const { data, error } = await supabase
+        .from('tournaments')
+        .select('id,name,date,access_code,status')
+        .eq('date', date)
+        .order('name', { ascending: true });
+
+      if (error || !data) return [];
+      return data as TournamentSummary[];
     },
 
     async refreshAdminUser() {
