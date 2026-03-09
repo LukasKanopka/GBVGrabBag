@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { useRoute, useRouter } from 'vue-router';
-import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
-import { useToast } from 'primevue/usetoast';
+import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { useSessionStore, type TournamentSummary } from '../../stores/session';
 
 withDefaults(defineProps<{ stickyHeader?: boolean }>(), {
@@ -11,7 +10,6 @@ withDefaults(defineProps<{ stickyHeader?: boolean }>(), {
 const router = useRouter();
 const route = useRoute();
 const session = useSessionStore();
-const toast = useToast();
 
 const accessCode = computed(() => (route.params.accessCode as string) ?? session.accessCode ?? '');
 const hasCode = computed(() => !!accessCode.value);
@@ -36,11 +34,6 @@ const menuPanelEl = ref<HTMLDivElement | null>(null);
 const sameDayLoading = ref(false);
 const sameDayTournaments = ref<TournamentSummary[] | null>(null);
 const sameDayLoadedForDate = ref<string | null>(null);
-
-const changeCodeOpen = ref(false);
-const changeCodeValue = ref('');
-const changeCodeInputEl = ref<HTMLInputElement | null>(null);
-const changeCodeLoading = ref(false);
 
 const sameDayDate = computed(() => session.tournament?.date ?? null);
 const sameDayLabel = computed(() => {
@@ -103,57 +96,28 @@ async function switchTournament(code: string) {
   const trimmed = code.trim();
   if (!trimmed || trimmed === accessCode.value) {
     menuOpen.value = false;
-    changeCodeOpen.value = false;
     return;
   }
 
   session.setAccessCode(trimmed);
   menuOpen.value = false;
-  changeCodeOpen.value = false;
   hardNavigateToTournamentPublic(trimmed);
-}
-
-async function submitChangeCode() {
-  const code = changeCodeValue.value.trim();
-  if (!code) return;
-
-  changeCodeLoading.value = true;
-  try {
-    await session.ensureAnon();
-    const t = await session.loadTournamentByCode(code);
-    if (!t) {
-      toast.add({ severity: 'error', summary: 'Tournament does not exist', detail: '', life: 2500 });
-      return;
-    }
-    await switchTournament(code);
-  } finally {
-    changeCodeLoading.value = false;
-  }
-}
-
-function openChangeCode() {
-  changeCodeOpen.value = true;
-  changeCodeValue.value = '';
-  nextTick(() => changeCodeInputEl.value?.focus());
 }
 
 function forgetCode() {
   session.clearAccessCode();
   menuOpen.value = false;
-  changeCodeOpen.value = false;
   hardNavigateToLanding();
 }
 
 function closeMenu() {
   menuOpen.value = false;
-  changeCodeOpen.value = false;
 }
 
 function toggleMenu() {
   menuOpen.value = !menuOpen.value;
   if (menuOpen.value) {
     loadSameDayTournaments();
-    changeCodeOpen.value = false;
   }
 }
 
@@ -309,56 +273,15 @@ onBeforeUnmount(() => {
 
                   <div class="border-t border-slate-200/70 pt-2">
                     <button
-                      v-if="!changeCodeOpen"
                       type="button"
                       class="w-full rounded-xl px-3 py-2 text-left text-sm font-semibold text-slate-800 hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-gbv-dark-green/30 transition-colors"
-                      @click="openChangeCode"
+                      @click="forgetCode"
                     >
                       <span class="flex items-center gap-2">
                         <i class="pi pi-key" aria-hidden="true" />
-                        Change code…
+                        Change code
                       </span>
                     </button>
-
-                    <form v-else class="px-1" @submit.prevent="submitChangeCode">
-                      <label class="block text-xs font-semibold text-slate-600">
-                        Enter another code
-                      </label>
-                      <div class="mt-2 flex gap-2">
-                        <input
-                          ref="changeCodeInputEl"
-                          v-model="changeCodeValue"
-                          inputmode="text"
-                          autocomplete="off"
-                          placeholder="e.g. GOGATORS"
-                          class="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-mono text-slate-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-gbv-dark-green/30"
-                          :disabled="changeCodeLoading"
-                        />
-                        <button
-                          type="submit"
-                          class="shrink-0 rounded-xl px-3 py-2 text-sm font-semibold text-white gbv-grad-dark-green shadow-sm disabled:opacity-60"
-                          :disabled="changeCodeLoading || !changeCodeValue.trim()"
-                        >
-                          {{ changeCodeLoading ? '…' : 'Go' }}
-                        </button>
-                      </div>
-                      <div class="mt-2 flex items-center justify-between">
-                        <button
-                          type="button"
-                          class="text-xs font-semibold text-slate-600 hover:text-slate-900 underline underline-offset-2"
-                          @click="changeCodeOpen = false"
-                        >
-                          Cancel
-                        </button>
-                        <button
-                          type="button"
-                          class="text-xs font-semibold text-slate-600 hover:text-slate-900 underline underline-offset-2"
-                          @click="forgetCode"
-                        >
-                          Forget code
-                        </button>
-                      </div>
-                    </form>
                   </div>
                 </div>
               </div>
