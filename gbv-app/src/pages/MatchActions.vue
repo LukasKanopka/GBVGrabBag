@@ -6,6 +6,7 @@ import { useToast } from 'primevue/usetoast';
 import supabase from '../lib/supabase';
 import { useSessionStore } from '../stores/session';
 import PublicLayout from '../components/layout/PublicLayout.vue';
+import UiBackButton from '../components/ui/UiBackButton.vue';
 
 type UUID = string;
 
@@ -233,9 +234,16 @@ onBeforeUnmount(() => {
 <template>
   <PublicLayout>
     <section class="p-5 sm:p-7">
-      <div class="flex items-center justify-between">
-        <h2 class="text-2xl font-semibold text-white">Match</h2>
-        <div v-if="loading" class="text-sm text-white/80">Loading…</div>
+      <div class="flex items-center justify-between gap-3">
+        <div class="flex items-center gap-3 min-w-0">
+          <UiBackButton
+            class="shrink-0"
+            :on-click="backToContext"
+            :aria-label="backLabel"
+          />
+          <h2 class="text-2xl font-semibold text-white truncate">Match</h2>
+        </div>
+        <div v-if="loading" class="text-sm text-white/80 shrink-0">Loading…</div>
       </div>
 
       <div v-if="match" class="mt-3">
@@ -350,10 +358,6 @@ onBeforeUnmount(() => {
           />
         </div>
 
-      </div>
-
-      <div class="mt-8 text-sm text-white/80 text-center">
-        <button class="underline text-white" @click="backToContext">{{ backLabel }}</button>
       </div>
     </section>
   </PublicLayout>

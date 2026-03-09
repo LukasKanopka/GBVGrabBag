@@ -5,6 +5,7 @@ import { useToast } from 'primevue/usetoast';
 import supabase from '../lib/supabase';
 import { useSessionStore } from '../stores/session';
 import PublicLayout from '../components/layout/PublicLayout.vue';
+import UiBackButton from '../components/ui/UiBackButton.vue';
 
 type Pool = {
   id: string;
@@ -129,14 +130,21 @@ onMounted(async () => {
 <template>
   <PublicLayout>
     <section class="p-5 sm:p-7">
-        <div class="flex items-center justify-between gap-3">
-          <div>
-            <h2 class="text-2xl font-semibold text-white">Pools</h2>
-            <p class="mt-1 text-white/80">
-              Choose a pool to view standings and schedule.
-            </p>
+        <div class="flex items-start justify-between gap-3">
+          <div class="flex items-start gap-3 min-w-0">
+            <UiBackButton
+              class="mt-0.5 shrink-0"
+              :to="{ name: 'tournament-public', params: { accessCode } }"
+              aria-label="Return to Tournament"
+            />
+            <div class="min-w-0">
+              <h2 class="text-2xl font-semibold text-white">Pools</h2>
+              <p class="mt-1 text-white/80">
+                Choose a pool to view standings and schedule.
+              </p>
+            </div>
           </div>
-          <div class="flex items-center gap-2">
+          <div class="flex items-center gap-2 shrink-0">
             <router-link
               :to="{ name: 'public-leaderboard', params: { accessCode } }"
               class="inline-flex items-center rounded-full bg-white/10 px-3 py-1 text-xs font-semibold text-white ring-1 ring-white/20 hover:bg-white/15 transition-colors whitespace-nowrap"
@@ -165,13 +173,6 @@ onMounted(async () => {
               </div>
             </li>
           </ul>
-        </div>
-
-        <div class="mt-8 text-sm text-white/80 text-center">
-          Return to
-          <router-link class="underline" :to="{ name: 'tournament-public', params: { accessCode } }">
-            Tournament
-          </router-link>
         </div>
     </section>
   </PublicLayout>

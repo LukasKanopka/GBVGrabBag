@@ -5,6 +5,7 @@ import { useSessionStore } from '../stores/session';
 import { useToast } from 'primevue/usetoast';
 import supabase from '../lib/supabase';
 import PublicLayout from '../components/layout/PublicLayout.vue';
+import UiBackButton from '../components/ui/UiBackButton.vue';
 
 type Team = { id: string; full_team_name: string };
 type Match = {
@@ -189,11 +190,18 @@ onBeforeUnmount(async () => {
 <template>
   <PublicLayout>
     <section class="p-5 sm:p-7">
-        <div class="flex items-center justify-between">
-          <h2 class="text-2xl font-semibold text-white">Live Scoreboard</h2>
+        <div class="flex items-center justify-between gap-3">
+          <div class="flex items-center gap-3 min-w-0">
+            <UiBackButton
+              class="shrink-0"
+              :to="{ name: 'tournament-public', params: { accessCode } }"
+              aria-label="Return to Tournament"
+            />
+            <h2 class="text-2xl font-semibold text-white truncate">Live Scoreboard</h2>
+          </div>
           <div
             v-if="isLive"
-            class="inline-flex items-center gap-2 rounded-full bg-red-600 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-white"
+            class="shrink-0 inline-flex items-center gap-2 rounded-full bg-red-600 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-white"
             aria-label="Live indicator"
           >
             <span class="size-2 rounded-full bg-white/90"></span>
@@ -232,13 +240,6 @@ onBeforeUnmount(async () => {
           <div class="rounded-xl border border-dashed border-white/30 p-6 text-center text-white/80">
             This view updates in real-time when the live match row changes in Supabase.
           </div>
-        </div>
-
-        <div class="mt-6 text-sm text-white/80">
-          Return to
-          <router-link class="underline" :to="{ name: 'tournament-public', params: { accessCode } }">
-            Tournament
-          </router-link>
         </div>
     </section>
   </PublicLayout>

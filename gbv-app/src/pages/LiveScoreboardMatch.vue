@@ -7,6 +7,7 @@ import supabase from '../lib/supabase';
 import { useSessionStore } from '../stores/session';
 import PublicLayout from '../components/layout/PublicLayout.vue';
 import { advanceWinnerToNextById } from '../lib/bracket';
+import UiBackButton from '../components/ui/UiBackButton.vue';
 
 type UUID = string;
 
@@ -52,6 +53,10 @@ const liveOwnerId = ref<string | null>(null);
 const liveLastActiveAt = ref<string | null>(null);
 const myUserId = ref<string | null>(null);
 const pausedForInactivity = ref(false);
+
+// Prevent stale/out-of-order realtime events from overwriting newer local writes while we own the live session.
+const myLatestWriteAtMs = ref<number>(0);
+const myPendingWriteAtMs = ref<number>(0);
 
 // Live is treated as a short lease that must be renewed by heartbeat.
 // This makes the "only one controller" rule robust even if a user closes the tab.
@@ -162,6 +167,16 @@ function setFromMatch(m: Match | null) {
     matchLabel.value = 'No match loaded';
     return;
   }
+
+  // Guard against out-of-order realtime events (e.g., heartbeat updates arriving after a newer local write).
+  // Only applies while we are the live owner, to avoid blocking legitimate updates from other devices.
+  const incomingLiveMs = m.live_last_active_at ? Date.parse(m.live_last_active_at) : NaN;
+  const isMine = !!myUserId.value && m.live_owner_id === myUserId.value;
+  const minAcceptedMs = Math.max(myLatestWriteAtMs.value, myPendingWriteAtMs.value);
+  if (isMine && Number.isFinite(incomingLiveMs) && incomingLiveMs < minAcceptedMs) {
+    return;
+  }
+
   liveMatchId.value = m.id;
   poolId.value = m.pool_id;
   team1Id.value = m.team1_id;
@@ -175,6 +190,13 @@ function setFromMatch(m: Match | null) {
   matchType.value = m.match_type;
   const prefix = m.match_type === 'bracket' ? 'Bracket' : 'Pool';
   matchLabel.value = `${prefix}${m.round_number ? ` R${m.round_number}` : ''}: ${nameFor(m.team1_id)} vs ${nameFor(m.team2_id)}`;
+
+  if (isMine && Number.isFinite(incomingLiveMs)) {
+    myLatestWriteAtMs.value = Math.max(myLatestWriteAtMs.value, incomingLiveMs);
+    if (myPendingWriteAtMs.value && incomingLiveMs >= myPendingWriteAtMs.value) {
+      myPendingWriteAtMs.value = 0;
+    }
+  }
 }
 
 async function loadMatch() {
@@ -249,10 +271,12 @@ async function claimLiveIfPossible() {
   await ensureBracketStartedIfBracket(updated[0] as Match);
 }
 
-async function applyScoreUpdate(newS1: number, newS2: number) {
-  if (!liveMatchId.value || !canControl.value) return;
-  if (!myUserId.value) return;
+async function applyScoreUpdate(newS1: number, newS2: number): Promise<boolean> {
+  if (!liveMatchId.value || !canControl.value) return false;
+  if (!myUserId.value) return false;
   const nowIso = new Date().toISOString();
+  const nowMs = Date.parse(nowIso);
+  if (Number.isFinite(nowMs)) myPendingWriteAtMs.value = Math.max(myPendingWriteAtMs.value, nowMs);
   const { error } = await supabase
     .from('matches')
     .update({
@@ -265,8 +289,17 @@ async function applyScoreUpdate(newS1: number, newS2: number) {
     .eq('id', liveMatchId.value)
     .eq('live_owner_id', myUserId.value);
   if (error) {
+    myPendingWriteAtMs.value = 0;
     toast.add({ severity: 'error', summary: 'Update failed', detail: error.message, life: 2500 });
+    return false;
   }
+
+  if (Number.isFinite(nowMs)) {
+    myLatestWriteAtMs.value = Math.max(myLatestWriteAtMs.value, nowMs);
+    if (myPendingWriteAtMs.value && nowMs >= myPendingWriteAtMs.value) myPendingWriteAtMs.value = 0;
+  }
+
+  return true;
 }
 
 const lastInteractionAt = ref<number>(Date.now());
@@ -277,35 +310,100 @@ function markInteraction() {
 async function inc(team: 1 | 2) {
   if (!canControl.value) return;
   markInteraction();
+  const prevS1 = score1.value;
+  const prevS2 = score2.value;
   const ns1 = team === 1 ? score1.value + 1 : score1.value;
   const ns2 = team === 2 ? score2.value + 1 : score2.value;
   score1.value = ns1;
   score2.value = ns2;
-  await applyScoreUpdate(ns1, ns2);
+  const ok = await applyScoreUpdate(ns1, ns2);
+  if (!ok) {
+    score1.value = prevS1;
+    score2.value = prevS2;
+    await loadMatch();
+  }
 }
 
 async function dec(team: 1 | 2) {
   if (!canControl.value) return;
   markInteraction();
+  const prevS1 = score1.value;
+  const prevS2 = score2.value;
   const ns1 = team === 1 ? Math.max(0, score1.value - 1) : score1.value;
   const ns2 = team === 2 ? Math.max(0, score2.value - 1) : score2.value;
   score1.value = ns1;
   score2.value = ns2;
-  await applyScoreUpdate(ns1, ns2);
+  const ok = await applyScoreUpdate(ns1, ns2);
+  if (!ok) {
+    score1.value = prevS1;
+    score2.value = prevS2;
+    await loadMatch();
+  }
 }
 
 async function flipScores() {
   if (!canControl.value) return;
+  if (!liveMatchId.value) return;
+  if (!myUserId.value) return;
+  if (!team1Id.value || !team2Id.value) return;
   markInteraction();
-  const ns1 = score2.value;
-  const ns2 = score1.value;
+
+  const prev = { s1: score1.value, s2: score2.value, t1: team1Id.value, t2: team2Id.value };
+  const ns1 = prev.s2;
+  const ns2 = prev.s1;
+  const nt1 = prev.t2;
+  const nt2 = prev.t1;
+
+  // Optimistic UI update (realtime will confirm).
   score1.value = ns1;
   score2.value = ns2;
-  // Names flip purely visual
-  const t1 = team1Id.value;
-  team1Id.value = team2Id.value;
-  team2Id.value = t1;
-  await applyScoreUpdate(ns1, ns2);
+  team1Id.value = nt1;
+  team2Id.value = nt2;
+
+  const nowIso = new Date().toISOString();
+  const nowMs = Date.parse(nowIso);
+  if (Number.isFinite(nowMs)) myPendingWriteAtMs.value = Math.max(myPendingWriteAtMs.value, nowMs);
+  const { data, error } = await supabase
+    .from('matches')
+    .update({
+      team1_id: nt1,
+      team2_id: nt2,
+      live_score_team1: ns1,
+      live_score_team2: ns2,
+      is_live: true,
+      live_owner_id: myUserId.value,
+      live_last_active_at: nowIso,
+    })
+    .eq('id', liveMatchId.value)
+    .eq('live_owner_id', myUserId.value)
+    .select('id,tournament_id,pool_id,team1_id,team2_id,is_live,live_score_team1,live_score_team2,live_owner_id,live_last_active_at,match_type,round_number');
+
+  if (error) {
+    myPendingWriteAtMs.value = 0;
+    score1.value = prev.s1;
+    score2.value = prev.s2;
+    team1Id.value = prev.t1;
+    team2Id.value = prev.t2;
+    toast.add({ severity: 'error', summary: 'Flip failed', detail: error.message, life: 2500 });
+    return;
+  }
+
+  const updated = (data as Match[] | null) ?? [];
+  if (updated.length === 0) {
+    // Likely lost live ownership between click and update.
+    myPendingWriteAtMs.value = 0;
+    canControl.value = false;
+    await loadMatch();
+    toast.add({ severity: 'warn', summary: 'Unable to flip', detail: 'Another device is live scoring this match.', life: 2500 });
+    return;
+  }
+
+  if (Number.isFinite(nowMs)) {
+    myLatestWriteAtMs.value = Math.max(myLatestWriteAtMs.value, nowMs);
+    if (myPendingWriteAtMs.value && nowMs >= myPendingWriteAtMs.value) myPendingWriteAtMs.value = 0;
+  }
+
+  setFromMatch(updated[0] as Match);
 }
 
 // Game rules and winner detection
@@ -594,11 +692,18 @@ onBeforeUnmount(async () => {
 <template>
   <PublicLayout>
     <section class="p-5 sm:p-7">
-        <div class="flex items-center justify-between">
-          <h2 class="text-2xl font-semibold text-white">Enter Live Score</h2>
+        <div class="flex items-center justify-between gap-3">
+          <div class="flex items-center gap-3 min-w-0">
+            <UiBackButton
+              class="shrink-0"
+              :on-click="backToMatchActions"
+              aria-label="Back to Match"
+            />
+            <h2 class="text-2xl font-semibold text-white truncate">Enter Live Score</h2>
+          </div>
           <div
             v-if="isLive"
-            class="inline-flex items-center gap-2 rounded-full bg-red-600 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-white"
+            class="shrink-0 inline-flex items-center gap-2 rounded-full bg-red-600 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-white"
             aria-label="Live indicator"
           >
             <span class="size-2 rounded-full bg-white/90"></span>
@@ -713,13 +818,7 @@ onBeforeUnmount(async () => {
           </div>
         </div>
 
-        <div class="mt-6 flex gap-4">
-          <Button
-            label="Back to Match"
-            severity="secondary"
-            class="!rounded-2xl !text-white !bg-white/10 !ring-1 !ring-white/20 hover:!bg-white/15 border-none"
-            @click="backToMatchActions"
-          />
+        <div class="mt-6 flex justify-center">
           <router-link
             :to="{ name: 'match-score', params: { accessCode: accessCode, matchId: matchId }, query: from ? { from } : undefined }"
             class="inline-flex items-center rounded-2xl bg-white/10 ring-1 ring-white/20 px-4 py-2 text-sm hover:bg-white/15 text-white"

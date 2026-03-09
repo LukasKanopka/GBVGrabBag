@@ -8,6 +8,7 @@ import Button from 'primevue/button';
 import { useToast } from 'primevue/usetoast';
 import supabase from '../lib/supabase';
 import PublicLayout from '../components/layout/PublicLayout.vue';
+import UiBackButton from '../components/ui/UiBackButton.vue';
 
 type Team = { id: string; full_team_name: string };
 type MatchRow = {
@@ -42,6 +43,16 @@ const matches = ref<MatchOption[]>([]);
 const selectedMatch = ref<MatchOption | null>(null);
 const team1Score = ref<number | null>(null);
 const team2Score = ref<number | null>(null);
+
+const team1FinalScoreLabel = computed(() => {
+  if (!selectedMatch.value) return 'Team 1 Final Score';
+  return `${nameFor(selectedMatch.value.team1_id)} Final Score`;
+});
+
+const team2FinalScoreLabel = computed(() => {
+  if (!selectedMatch.value) return 'Team 2 Final Score';
+  return `${nameFor(selectedMatch.value.team2_id)} Final Score`;
+});
 
 async function ensureTournament() {
   if (!accessCode.value) return;
@@ -173,9 +184,16 @@ onMounted(async () => {
 <template>
   <PublicLayout>
     <section class="p-5 sm:p-7">
-      <div class="flex items-center justify-between">
-        <h2 class="text-2xl font-semibold text-white">Score Entry</h2>
-        <div v-if="loading" class="text-sm text-white/80">Loading…</div>
+      <div class="flex items-center justify-between gap-3">
+        <div class="flex items-center gap-3 min-w-0">
+          <UiBackButton
+            class="shrink-0"
+            :to="{ name: 'tournament-public', params: { accessCode } }"
+            aria-label="Return to Tournament"
+          />
+          <h2 class="text-2xl font-semibold text-white truncate">Score Entry</h2>
+        </div>
+        <div v-if="loading" class="text-sm text-white/80 shrink-0">Loading…</div>
       </div>
       <p class="mt-1 text-white/80">
         Submit final scores for completed matches. Validation and tiebreakers apply on the server.
@@ -196,7 +214,7 @@ onMounted(async () => {
 
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-5">
           <div>
-            <label class="block text-sm font-medium text-white/80 mb-2">Team 1 Score</label>
+            <label class="block text-sm font-medium text-white/80 mb-2">{{ team1FinalScoreLabel }}</label>
             <InputNumber
               v-model="team1Score"
               showButtons
@@ -212,7 +230,7 @@ onMounted(async () => {
           </div>
 
           <div>
-            <label class="block text-sm font-medium text-white/80 mb-2">Team 2 Score</label>
+            <label class="block text-sm font-medium text-white/80 mb-2">{{ team2FinalScoreLabel }}</label>
             <InputNumber
               v-model="team2Score"
               showButtons
@@ -239,13 +257,6 @@ onMounted(async () => {
             @click="submitScore"
           />
         </div>
-      </div>
-
-      <div class="mt-8 text-sm text-white/80 text-center">
-        Return to
-        <router-link class="underline" :to="{ name: 'tournament-public', params: { accessCode } }">
-          Tournament
-        </router-link>
       </div>
     </section>
   </PublicLayout>
